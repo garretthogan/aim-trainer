@@ -354,8 +354,8 @@ function onTargetHit(targetEntity, projectileEntity, normalizedDistance, targetD
 
 function showScorePopup(position, earnedScore, normalizedDistance, targetDistance, distanceMultiplier) {
   const canvas = document.createElement('canvas');
-  canvas.width = 512;
-  canvas.height = 192;
+  canvas.width = 768;
+  canvas.height = 256;
   const ctx = canvas.getContext('2d');
   
   let color = '#ffff00';
@@ -383,16 +383,33 @@ function showScorePopup(position, earnedScore, normalizedDistance, targetDistanc
     subText = `${Math.round(targetDistance)}m`;
   }
   
-  ctx.fillStyle = color;
-  ctx.font = 'bold 56px Arial';
+  // Draw main text with cel-shaded outline
+  ctx.font = 'bold 72px Arial';
   ctx.textAlign = 'center';
-  ctx.fillText(mainText, 256, 80);
+  ctx.textBaseline = 'middle';
   
-  // Draw distance bonus text
+  // Black outline (cel-shading effect)
+  ctx.strokeStyle = '#000000';
+  ctx.lineWidth = 8;
+  ctx.lineJoin = 'round';
+  ctx.strokeText(mainText, 384, 100);
+  
+  // Colored fill
+  ctx.fillStyle = color;
+  ctx.fillText(mainText, 384, 100);
+  
+  // Draw distance bonus text with outline
   if (subText) {
-    ctx.font = 'bold 32px Arial';
-    ctx.fillStyle = '#00ddff';
-    ctx.fillText(subText, 256, 130);
+    ctx.font = 'bold 40px Arial';
+    
+    // Black outline
+    ctx.strokeStyle = '#000000';
+    ctx.lineWidth = 6;
+    ctx.strokeText(subText, 384, 170);
+    
+    // Orange fill
+    ctx.fillStyle = '#ff6600'; // Bright orange - stands out against blue sky
+    ctx.fillText(subText, 384, 170);
   }
   
   const texture = new THREE.CanvasTexture(canvas);
@@ -403,25 +420,30 @@ function showScorePopup(position, earnedScore, normalizedDistance, targetDistanc
   
   // Calculate distance from camera to maintain constant apparent size
   const distanceToCamera = camera.position.distanceTo(position);
-  const scaleFactor = distanceToCamera * 0.15; // Adjust this to change perceived size
+  const scaleFactor = distanceToCamera * 0.18; // Larger scale for bigger text
   sprite.scale.set(scaleFactor * 2, scaleFactor, 1);
   
   scene.add(sprite);
   
   const startTime = Date.now();
   const startY = sprite.position.y;
+  const duration = 2.5; // Stay visible for 2.5 seconds (was 1.5)
   
   const animatePopup = () => {
     const elapsed = (Date.now() - startTime) / 1000;
     
-    if (elapsed < 1.5) {
+    if (elapsed < duration) {
       // Move upward relative to distance
-      sprite.position.y = startY + (elapsed * distanceToCamera * 0.02);
-      sprite.material.opacity = 1 - (elapsed / 1.5);
+      sprite.position.y = startY + (elapsed * distanceToCamera * 0.015);
+      
+      // Fade out in the last 0.5 seconds
+      if (elapsed > duration - 0.5) {
+        sprite.material.opacity = (duration - elapsed) / 0.5;
+      }
       
       // Recalculate scale based on current distance to maintain constant size
       const currentDistance = camera.position.distanceTo(sprite.position);
-      const currentScale = currentDistance * 0.15;
+      const currentScale = currentDistance * 0.18;
       sprite.scale.set(currentScale * 2, currentScale, 1);
       
       requestAnimationFrame(animatePopup);

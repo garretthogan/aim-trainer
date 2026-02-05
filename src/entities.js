@@ -13,22 +13,28 @@ export function createTargetTexture(isMoving) {
   const canvas = document.createElement('canvas');
   canvas.width = size;
   canvas.height = size;
-  const ctx = canvas.getContext('2d');
+  const ctx = canvas.getContext('2d', { alpha: true });
+  
+  // Enable anti-aliasing for smoother lines
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = 'high';
   
   const centerX = size / 2;
   const centerY = size / 2;
   
-  ctx.fillStyle = '#ffffff';
+  // Start with beige/cream background instead of white
+  ctx.fillStyle = '#f5e6d3';
   ctx.fillRect(0, 0, size, size);
   
+  // Vibrant, saturated red rings
   const rings = [
-    { radius: 1.0, color: isMoving ? '#ff4444' : '#ff0000' },
-    { radius: 0.85, color: '#ffffff' },
-    { radius: 0.65, color: isMoving ? '#ff6666' : '#ff3333' },
-    { radius: 0.50, color: '#ffffff' },
-    { radius: 0.35, color: isMoving ? '#ff8888' : '#ff6666' },
-    { radius: 0.20, color: '#ffffff' },
-    { radius: 0.08, color: isMoving ? '#ffff00' : '#ffcc00' }
+    { radius: 1.0, color: isMoving ? '#ff0000' : '#dd0000' },  // Bright red outer
+    { radius: 0.85, color: '#e8d4b8' },                         // Cream
+    { radius: 0.65, color: isMoving ? '#ee0000' : '#cc0000' }, // Bright red mid
+    { radius: 0.50, color: '#e8d4b8' },                         // Cream
+    { radius: 0.35, color: isMoving ? '#dd0000' : '#bb0000' }, // Bright red inner
+    { radius: 0.20, color: '#e8d4b8' },                         // Cream
+    { radius: 0.08, color: '#ffcc00' }                          // Gold center
   ];
   
   rings.forEach(ring => {
@@ -38,19 +44,28 @@ export function createTargetTexture(isMoving) {
     ctx.fill();
   });
   
+  // Thicker, smoother crosshair lines
   ctx.strokeStyle = '#000000';
-  ctx.lineWidth = 2;
+  ctx.lineWidth = 4;
+  ctx.lineCap = 'round';
+  
+  // Horizontal line
   ctx.beginPath();
-  ctx.moveTo(centerX - 20, centerY);
-  ctx.lineTo(centerX + 20, centerY);
+  ctx.moveTo(centerX - 30, centerY);
+  ctx.lineTo(centerX + 30, centerY);
   ctx.stroke();
+  
+  // Vertical line
   ctx.beginPath();
-  ctx.moveTo(centerX, centerY - 20);
-  ctx.lineTo(centerX, centerY + 20);
+  ctx.moveTo(centerX, centerY - 30);
+  ctx.lineTo(centerX, centerY + 30);
   ctx.stroke();
   
   const texture = new THREE.CanvasTexture(canvas);
   texture.needsUpdate = true;
+  texture.minFilter = THREE.LinearFilter;
+  texture.magFilter = THREE.LinearFilter;
+  texture.anisotropy = 16; // High quality filtering
   
   return texture;
 }
