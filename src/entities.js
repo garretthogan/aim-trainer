@@ -56,16 +56,26 @@ export function createTargetTexture(isMoving) {
 }
 
 export function createTargetEntity(world, scene, physicsWorld, AmmoLib, camera, isMoving = Math.random() > 0.5) {
-  const size = 2;
+  // Slightly randomize size for moving targets
+  const size = isMoving ? (1.7 + Math.random() * 0.6) : 2.0; // 1.7 to 2.3 for moving, 2.0 for stationary
   const geometry = new THREE.CircleGeometry(size, 32);
   const targetTexture = createTargetTexture(isMoving);
   
-  const material = new THREE.MeshStandardMaterial({
+  // Create gradient map for cel shading
+  const colors = new Uint8Array(4);
+  colors[0] = 100;  // Dark
+  colors[1] = 160;  // Medium-dark
+  colors[2] = 220;  // Medium-light
+  colors[3] = 255;  // Light
+  
+  const gradientMap = new THREE.DataTexture(colors, colors.length, 1, THREE.RedFormat);
+  gradientMap.needsUpdate = true;
+  
+  const material = new THREE.MeshToonMaterial({
     map: targetTexture,
-    emissive: isMoving ? 0x330000 : 0x000000,
-    emissiveIntensity: isMoving ? 0.2 : 0,
-    roughness: 0.7,
-    metalness: 0.1,
+    gradientMap: gradientMap,
+    emissive: 0xffffff, // White glow
+    emissiveIntensity: 0.3,
     side: THREE.DoubleSide
   });
   
@@ -90,15 +100,27 @@ export function createTargetEntity(world, scene, physicsWorld, AmmoLib, camera, 
   mesh.position.set(x, y, z);
   mesh.castShadow = true;
   mesh.receiveShadow = true;
+  
+  // Add outline for cel-shading effect using ring
+  const outlineGeometry = new THREE.RingGeometry(size, size + 0.12, 32);
+  const outlineMaterial = new THREE.MeshBasicMaterial({
+    color: 0x000000,
+    side: THREE.DoubleSide
+  });
+  const outline = new THREE.Mesh(outlineGeometry, outlineMaterial);
+  outline.position.z = -0.001; // Slightly behind the target
+  mesh.add(outline);
+  
   scene.add(mesh);
 
-  // Physics body
+  // Physics body - match the visual size
   const shape = new AmmoLib.btSphereShape(size);
   const transform = new AmmoLib.btTransform();
   transform.setIdentity();
   transform.setOrigin(new AmmoLib.btVector3(x, y, z));
 
-  const mass = isMoving ? 1 : 0;
+  // Randomize mass for moving targets (affects fall speed)
+  let mass = isMoving ? (0.5 + Math.random() * 2.0) : 0; // 0.5 to 2.5 for moving targets
   const localInertia = new AmmoLib.btVector3(0, 0, 0);
   
   if (mass > 0) {
@@ -109,24 +131,59 @@ export function createTargetEntity(world, scene, physicsWorld, AmmoLib, camera, 
   const rbInfo = new AmmoLib.btRigidBodyConstructionInfo(mass, motionState, shape, localInertia);
   const body = new AmmoLib.btRigidBody(rbInfo);
   
-  body.setRestitution(0.9);
-  body.setFriction(0.5);
+  // Perfect elasticity - targets maintain bounce height forever
+  const restitution = 1.0; // Perfect elastic collision
+  body.setRestitution(restitution);
+  body.setFriction(0.0); // Zero friction
+  body.setRollingFriction(0.0); // Zero rolling friction
+  
+  // Disable damping so they don't lose energy over time
+  body.setDamping(0.0, 0.0); // No linear or angular damping
+  
+  // Prevent deactivation (sleeping) so physics always runs
+  body.setActivationState(4); // DISABLE_DEACTIVATION
+  body.setSleepingThresholds(0.0, 0.0); // Never sleep
+  
+  // Ensure continuous collision detection for fast-moving objects
+  body.setCcdMotionThreshold(0.1);
+  body.setCcdSweptSphereRadius(size * 0.2);
+  
+  // Store physics properties for debugging/reference
+  mesh.userData.mass = mass;
+  mesh.userData.restitution = restitution;
   
   if (isMoving) {
+    // All targets get UPWARD velocity to ensure they bounce
+    // Different speeds = different bounce heights (maintained forever)
+    const verticalSpeed = 8 + Math.random() * 12; // 8 to 20 (all positive = all rising)
+    // v=8 bounces to ~1m height, v=20 bounces to ~6.7m height
+    // Height = v² / (2 * gravity), gravity = 30
+    
+    // NO horizontal velocity - targets bounce straight up and down in place
     const velocity = new AmmoLib.btVector3(
-      (Math.random() - 0.5) * 10,
-      (Math.random() - 0.5) * 5,
-      (Math.random() - 0.5) * 10
+      0, // No X movement
+      verticalSpeed, // Only vertical movement
+      0  // No Z movement
     );
     body.setLinearVelocity(velocity);
+    
+    // Add slow spin for visual interest - will maintain forever
+    const spinSpeed = 0.5 + Math.random() * 1.5; // 0.5 to 2.0
     body.setAngularVelocity(new AmmoLib.btVector3(
-      Math.random() * 2,
-      Math.random() * 2,
-      Math.random() * 2
+      (Math.random() - 0.5) * spinSpeed,
+      (Math.random() - 0.5) * spinSpeed,
+      (Math.random() - 0.5) * spinSpeed
     ));
+    
   }
 
   physicsWorld.addRigidBody(body);
+  
+  // Force activation immediately for moving targets
+  if (isMoving) {
+    body.activate(true);
+    body.forceActivationState(4); // DISABLE_DEACTIVATION - ensure it stays active
+  }
 
   // Create entity
   const entity = world.createEntity();
@@ -140,14 +197,35 @@ export function createTargetEntity(world, scene, physicsWorld, AmmoLib, camera, 
 export function createProjectileEntity(world, scene, physicsWorld, AmmoLib, camera) {
   const projectileSize = 0.3;
   const geometry = new THREE.SphereGeometry(projectileSize, 16, 16);
-  const material = new THREE.MeshStandardMaterial({
+  
+  // Create gradient map for cel shading
+  const colors = new Uint8Array(3);
+  colors[0] = 180;  // Dark
+  colors[1] = 220;  // Medium
+  colors[2] = 255;  // Light
+  
+  const gradientMap = new THREE.DataTexture(colors, colors.length, 1, THREE.RedFormat);
+  gradientMap.needsUpdate = true;
+  
+  const material = new THREE.MeshToonMaterial({
     color: 0xffff00,
+    gradientMap: gradientMap,
     emissive: 0xffff00,
-    emissiveIntensity: 0.8
+    emissiveIntensity: 0.5
   });
   
   const mesh = new THREE.Mesh(geometry, material);
   mesh.position.copy(camera.position);
+  
+  // Add outline for cel-shading effect
+  const outlineGeometry = new THREE.SphereGeometry(projectileSize + 0.08, 16, 16);
+  const outlineMaterial = new THREE.MeshBasicMaterial({
+    color: 0x000000,
+    side: THREE.BackSide
+  });
+  const outline = new THREE.Mesh(outlineGeometry, outlineMaterial);
+  mesh.add(outline);
+  
   scene.add(mesh);
 
   // Physics body

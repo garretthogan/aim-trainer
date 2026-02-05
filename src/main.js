@@ -88,10 +88,10 @@ loadAmmo().then((Ammo) => {
 });
 
 function init() {
-  // Setup scene
+  // Setup scene - solid color background for cel-shaded look
   scene = new THREE.Scene();
-  scene.background = new THREE.Color(0x1a1a2e);
-  scene.fog = new THREE.Fog(0x1a1a2e, 50, 200);
+  scene.background = new THREE.Color(0x87ceeb); // Sky blue for cartoon style
+  scene.fog = new THREE.Fog(0x87ceeb, 120, 300);
 
   // Setup camera
   camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
@@ -102,13 +102,15 @@ function init() {
   renderer.setSize(window.innerWidth, window.innerHeight);
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  renderer.toneMapping = THREE.NoToneMapping; // Better for cel shading
+  renderer.toneMappingExposure = 1.0;
   document.getElementById('game-container').appendChild(renderer.domElement);
 
-  // Setup lights
-  const ambientLight = new THREE.AmbientLight(0xffffff, 0.4);
+  // Setup lights - much brighter
+  const ambientLight = new THREE.AmbientLight(0xffffff, 0.8);
   scene.add(ambientLight);
 
-  const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+  const directionalLight = new THREE.DirectionalLight(0xffffff, 1.2);
   directionalLight.position.set(10, 20, 10);
   directionalLight.castShadow = true;
   directionalLight.shadow.camera.left = -50;
@@ -119,11 +121,16 @@ function init() {
   directionalLight.shadow.mapSize.height = 2048;
   scene.add(directionalLight);
 
-  const pointLight1 = new THREE.PointLight(0x00ffff, 0.5, 50);
+  // Additional directional light from opposite side
+  const directionalLight2 = new THREE.DirectionalLight(0xffffff, 0.6);
+  directionalLight2.position.set(-10, 15, -10);
+  scene.add(directionalLight2);
+
+  const pointLight1 = new THREE.PointLight(0x00ffff, 1.0, 80);
   pointLight1.position.set(-20, 10, -20);
   scene.add(pointLight1);
 
-  const pointLight2 = new THREE.PointLight(0xff00ff, 0.5, 50);
+  const pointLight2 = new THREE.PointLight(0xff00ff, 1.0, 80);
   pointLight2.position.set(20, 10, 20);
   scene.add(pointLight2);
 
@@ -192,14 +199,37 @@ function setupPhysicsWorld() {
 
 function createGround() {
   const groundGeometry = new THREE.PlaneGeometry(100, 100);
-  const groundMaterial = new THREE.MeshStandardMaterial({
-    color: 0x16213e,
-    roughness: 0.8,
-    metalness: 0.2
+  
+  // Create gradient map for cel shading
+  const colors = new Uint8Array(3);
+  colors[0] = 100;  // Dark
+  colors[1] = 180;  // Medium
+  colors[2] = 255;  // Light
+  
+  const gradientMap = new THREE.DataTexture(colors, colors.length, 1, THREE.RedFormat);
+  gradientMap.needsUpdate = true;
+  
+  const groundMaterial = new THREE.MeshToonMaterial({
+    color: 0x4a7c59, // Green grass-like color for cartoon style
+    gradientMap: gradientMap
   });
   const ground = new THREE.Mesh(groundGeometry, groundMaterial);
   ground.rotation.x = -Math.PI / 2;
   ground.receiveShadow = true;
+  
+  // Add grid lines for cel-shading style
+  const gridHelper = new THREE.GridHelper(100, 20, 0x000000, 0x000000);
+  gridHelper.position.y = 0.01;
+  gridHelper.material.opacity = 0.3;
+  gridHelper.material.transparent = true;
+  scene.add(gridHelper);
+  
+  // Add outline edges to ground
+  const groundEdgesGeometry = new THREE.EdgesGeometry(groundGeometry);
+  const groundEdgesMaterial = new THREE.LineBasicMaterial({ color: 0x000000, linewidth: 3 });
+  const groundEdges = new THREE.LineSegments(groundEdgesGeometry, groundEdgesMaterial);
+  ground.add(groundEdges);
+  
   scene.add(ground);
 
   const groundShape = new AmmoLib.btBoxShape(new AmmoLib.btVector3(50, 0.5, 50));
@@ -212,6 +242,11 @@ function createGround() {
   const motionState = new AmmoLib.btDefaultMotionState(groundTransform);
   const rbInfo = new AmmoLib.btRigidBodyConstructionInfo(mass, motionState, groundShape, localInertia);
   const body = new AmmoLib.btRigidBody(rbInfo);
+  
+  // Perfect restitution so targets maintain bounce height
+  body.setRestitution(1.0);
+  body.setFriction(0.0);
+  body.setRollingFriction(0.0);
   
   physicsWorld.addRigidBody(body);
 }
@@ -231,18 +266,34 @@ function createWalls() {
     [0, Math.PI / 2, 0]
   ];
 
+  // Create gradient map for cel shading
+  const colors = new Uint8Array(4);
+  colors[0] = 80;   // Dark
+  colors[1] = 140;  // Medium-dark
+  colors[2] = 200;  // Medium-light
+  colors[3] = 255;  // Light
+  
+  const gradientMap = new THREE.DataTexture(colors, colors.length, 1, THREE.RedFormat);
+  gradientMap.needsUpdate = true;
+
   wallPositions.forEach((pos, index) => {
     const wallGeometry = new THREE.PlaneGeometry(100, 10);
-    const wallMaterial = new THREE.MeshStandardMaterial({
-      color: 0x0f3460,
-      roughness: 0.7,
-      metalness: 0.3,
+    const wallMaterial = new THREE.MeshToonMaterial({
+      color: 0x6b5b95, // Purple walls for cartoon style
+      gradientMap: gradientMap,
       side: THREE.DoubleSide
     });
     const wall = new THREE.Mesh(wallGeometry, wallMaterial);
     wall.position.set(pos[0], pos[1], pos[2]);
     wall.rotation.set(...wallRotations[index]);
     wall.receiveShadow = true;
+    
+    // Add outline edges
+    const edgesGeometry = new THREE.EdgesGeometry(wallGeometry);
+    const edgesMaterial = new THREE.LineBasicMaterial({ color: 0x000000, linewidth: 2 });
+    const edges = new THREE.LineSegments(edgesGeometry, edgesMaterial);
+    wall.add(edges);
+    
     scene.add(wall);
 
     const wallShape = new AmmoLib.btBoxShape(new AmmoLib.btVector3(50, 5, 0.5));
@@ -261,6 +312,11 @@ function createWalls() {
     const motionState = new AmmoLib.btDefaultMotionState(wallTransform);
     const rbInfo = new AmmoLib.btRigidBodyConstructionInfo(mass, motionState, wallShape, localInertia);
     const body = new AmmoLib.btRigidBody(rbInfo);
+    
+    // Perfect restitution so targets maintain bounce height
+    body.setRestitution(1.0);
+    body.setFriction(0.0);
+    body.setRollingFriction(0.0);
     
     physicsWorld.addRigidBody(body);
   });
@@ -344,17 +400,30 @@ function showScorePopup(position, earnedScore, normalizedDistance, targetDistanc
   const sprite = new THREE.Sprite(spriteMaterial);
   sprite.position.copy(position);
   sprite.position.y += 3;
-  sprite.scale.set(6, 3, 1);
+  
+  // Calculate distance from camera to maintain constant apparent size
+  const distanceToCamera = camera.position.distanceTo(position);
+  const scaleFactor = distanceToCamera * 0.15; // Adjust this to change perceived size
+  sprite.scale.set(scaleFactor * 2, scaleFactor, 1);
   
   scene.add(sprite);
   
   const startTime = Date.now();
+  const startY = sprite.position.y;
+  
   const animatePopup = () => {
     const elapsed = (Date.now() - startTime) / 1000;
     
     if (elapsed < 1.5) {
-      sprite.position.y += 0.02;
+      // Move upward relative to distance
+      sprite.position.y = startY + (elapsed * distanceToCamera * 0.02);
       sprite.material.opacity = 1 - (elapsed / 1.5);
+      
+      // Recalculate scale based on current distance to maintain constant size
+      const currentDistance = camera.position.distanceTo(sprite.position);
+      const currentScale = currentDistance * 0.15;
+      sprite.scale.set(currentScale * 2, currentScale, 1);
+      
       requestAnimationFrame(animatePopup);
     } else {
       scene.remove(sprite);
@@ -368,10 +437,20 @@ function createExplosion(position) {
   const particleCount = 20;
   const particles = [];
   
+  // Create gradient map for cel shading
+  const colors = new Uint8Array(2);
+  colors[0] = 150;  // Dark
+  colors[1] = 255;  // Light
+  
+  const gradientMap = new THREE.DataTexture(colors, colors.length, 1, THREE.RedFormat);
+  gradientMap.needsUpdate = true;
+  
   for (let i = 0; i < particleCount; i++) {
     const geometry = new THREE.SphereGeometry(0.2, 8, 8);
-    const material = new THREE.MeshBasicMaterial({
-      color: Math.random() > 0.5 ? 0xff6b6b : 0xffaa00
+    const particleColor = Math.random() > 0.5 ? 0xff6b6b : 0xffaa00;
+    const material = new THREE.MeshToonMaterial({
+      color: particleColor,
+      gradientMap: gradientMap
     });
     const particle = new THREE.Mesh(geometry, material);
     particle.position.copy(position);
