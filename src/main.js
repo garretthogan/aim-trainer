@@ -51,7 +51,8 @@ const clock = new THREE.Clock();
 // Load Ammo.js dynamically
 async function loadAmmo() {
   const script = document.createElement('script');
-  script.src = '/ammo.js';
+  // Use Vite's base URL to ensure correct path for GitHub Pages
+  script.src = import.meta.env.BASE_URL + 'ammo.js';
   
   return new Promise((resolve, reject) => {
     script.onload = () => {
