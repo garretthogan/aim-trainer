@@ -87,3 +87,18 @@ The built files will be in the `dist/` directory.
 ```bash
 npm run preview
 ```
+
+## Deployment
+
+This project is configured for automatic deployment to GitHub Pages. See [DEPLOYMENT.md](./DEPLOYMENT.md) for detailed instructions.
+
+### Quick Deploy
+
+1. Create a GitHub repository named `aim-trainer`
+2. Add the remote and push:
+   ```bash
+   git remote add origin https://github.com/YOUR_USERNAME/aim-trainer.git
+   git push -u origin main
+   ```
+3. Enable GitHub Pages in repository settings (Settings → Pages → Source: GitHub Actions)
+4. Your site will be live at: `https://YOUR_USERNAME.github.io/aim-trainer/`
