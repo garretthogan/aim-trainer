@@ -1,0 +1,222 @@
+// Systems for the ECS
+import { System } from './ecs.js';
+import { 
+  MeshComponent, 
+  PhysicsComponent, 
+  TargetComponent, 
+  ProjectileComponent,
+  PlayerComponent,
+  GameTimerComponent,
+  GameStateComponent
+} from './components.js';
+import * as THREE from 'three';
+
+export class PhysicsSystem extends System {
+  constructor(physicsWorld, tmpTrans) {
+    super();
+    this.physicsWorld = physicsWorld;
+    this.tmpTrans = tmpTrans;
+  }
+
+  update(deltaTime) {
+    // Step physics simulation
+    this.physicsWorld.stepSimulation(deltaTime, 10);
+
+    // Update all entities with physics and mesh
+    const entities = this.world.getEntitiesWith(PhysicsComponent, MeshComponent);
+    
+    entities.forEach(entity => {
+      const physics = entity.getComponent(PhysicsComponent);
+      const mesh = entity.getComponent(MeshComponent);
+      
+      const ms = physics.body.getMotionState();
+      if (ms) {
+        ms.getWorldTransform(this.tmpTrans);
+        const p = this.tmpTrans.getOrigin();
+        const q = this.tmpTrans.getRotation();
+        mesh.mesh.position.set(p.x(), p.y(), p.z());
+        mesh.mesh.quaternion.set(q.x(), q.y(), q.z(), q.w());
+      }
+    });
+  }
+}
+
+export class TargetRotationSystem extends System {
+  constructor(camera) {
+    super();
+    this.camera = camera;
+  }
+
+  update(deltaTime) {
+    // Make all targets face the camera
+    const targets = this.world.getEntitiesWith(TargetComponent, MeshComponent);
+    
+    targets.forEach(entity => {
+      const mesh = entity.getComponent(MeshComponent);
+      mesh.mesh.lookAt(this.camera.position);
+    });
+  }
+}
+
+export class CollisionSystem extends System {
+  constructor(scene, physicsWorld, AmmoLib, camera, onHit) {
+    super();
+    this.scene = scene;
+    this.physicsWorld = physicsWorld;
+    this.AmmoLib = AmmoLib;
+    this.camera = camera;
+    this.onHit = onHit;
+  }
+
+  update(deltaTime) {
+    const projectiles = this.world.getEntitiesWith(ProjectileComponent, MeshComponent);
+    const targets = this.world.getEntitiesWith(TargetComponent, MeshComponent);
+
+    projectiles.forEach(projectileEntity => {
+      const projectileMesh = projectileEntity.getComponent(MeshComponent);
+      const projectileComp = projectileEntity.getComponent(ProjectileComponent);
+      
+      targets.forEach(targetEntity => {
+        const targetMesh = targetEntity.getComponent(MeshComponent);
+        const targetComp = targetEntity.getComponent(TargetComponent);
+        
+        const collisionDistance = projectileMesh.mesh.position.distanceTo(targetMesh.mesh.position);
+        
+        if (collisionDistance < targetComp.size + 0.5) {
+          // Hit detected!
+          const normalizedDistance = Math.min(collisionDistance / targetComp.size, 1.0);
+          
+          // Calculate distance from player to target for distance bonus
+          const targetDistance = this.camera.position.distanceTo(targetMesh.mesh.position);
+          
+          // Notify hit callback with both accuracy and distance
+          this.onHit(targetEntity, projectileEntity, normalizedDistance, targetDistance);
+          
+          // Mark entities for removal
+          this.removeEntity(projectileEntity);
+          this.removeEntity(targetEntity);
+        }
+      });
+    });
+  }
+
+  removeEntity(entity) {
+    // Remove mesh from scene
+    const meshComp = entity.getComponent(MeshComponent);
+    if (meshComp) {
+      this.scene.remove(meshComp.mesh);
+    }
+
+    // Remove physics body
+    const physicsComp = entity.getComponent(PhysicsComponent);
+    if (physicsComp) {
+      this.physicsWorld.removeRigidBody(physicsComp.body);
+    }
+
+    // Remove from world
+    this.world.removeEntity(entity);
+  }
+}
+
+export class ProjectileCleanupSystem extends System {
+  constructor(scene, physicsWorld) {
+    super();
+    this.scene = scene;
+    this.physicsWorld = physicsWorld;
+  }
+
+  update(deltaTime) {
+    const projectiles = this.world.getEntitiesWith(ProjectileComponent, MeshComponent);
+    const now = Date.now();
+
+    projectiles.forEach(entity => {
+      const projectile = entity.getComponent(ProjectileComponent);
+      
+      if (now - projectile.createdAt > projectile.lifetime) {
+        // Remove old projectile
+        const meshComp = entity.getComponent(MeshComponent);
+        if (meshComp) {
+          this.scene.remove(meshComp.mesh);
+        }
+
+        const physicsComp = entity.getComponent(PhysicsComponent);
+        if (physicsComp) {
+          this.physicsWorld.removeRigidBody(physicsComp.body);
+        }
+
+        this.world.removeEntity(entity);
+      }
+    });
+  }
+}
+
+export class TargetBoundsSystem extends System {
+  constructor(AmmoLib) {
+    super();
+    this.AmmoLib = AmmoLib;
+  }
+
+  update(deltaTime) {
+    const targets = this.world.getEntitiesWith(TargetComponent, MeshComponent, PhysicsComponent);
+
+    targets.forEach(entity => {
+      const target = entity.getComponent(TargetComponent);
+      const mesh = entity.getComponent(MeshComponent);
+      const physics = entity.getComponent(PhysicsComponent);
+
+      if (target.isMoving) {
+        const pos = mesh.mesh.position;
+        
+        // Keep within bounds
+        if (Math.abs(pos.x) > 45 || Math.abs(pos.z) > 45 || pos.y < 2 || pos.y > 20) {
+          const body = physics.body;
+          const vel = body.getLinearVelocity();
+          body.setLinearVelocity(
+            new this.AmmoLib.btVector3(-vel.x() * 0.8, -vel.y() * 0.8, -vel.z() * 0.8)
+          );
+        }
+      }
+    });
+  }
+}
+
+export class TimerSystem extends System {
+  constructor(onTimeUp) {
+    super();
+    this.onTimeUp = onTimeUp;
+  }
+
+  update(deltaTime) {
+    const timers = this.world.getEntitiesWith(GameTimerComponent);
+
+    timers.forEach(entity => {
+      const timer = entity.getComponent(GameTimerComponent);
+
+      if (timer.isActive) {
+        timer.timeRemaining -= deltaTime;
+
+        // Update UI
+        const timerElement = document.getElementById('timer');
+        if (timerElement) {
+          const seconds = Math.max(0, Math.ceil(timer.timeRemaining));
+          timerElement.textContent = seconds;
+
+          // Add warning class when time is low
+          if (seconds <= 10) {
+            timerElement.classList.add('warning');
+          } else {
+            timerElement.classList.remove('warning');
+          }
+        }
+
+        // Time's up!
+        if (timer.timeRemaining <= 0) {
+          timer.stop();
+          if (this.onTimeUp) {
+            this.onTimeUp();
+          }
+        }
+      }
+    });
+  }
+}

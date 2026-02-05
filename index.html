@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Aim Trainer 3D</title>
+  </head>
+  <body>
+    <div id="game-container">
+      <div id="hud">
+        <div id="crosshair"></div>
+        <div id="stats">
+          <div>Time: <span id="timer">60</span>s</div>
+          <div>Score: <span id="score">0</span></div>
+          <div>Accuracy: <span id="accuracy">0</span>%</div>
+          <div>Hits: <span id="hits">0</span></div>
+          <div>Shots: <span id="shots">0</span></div>
+        </div>
+        <div id="instructions">
+          <p>Click to shoot • Mouse to look around</p>
+          <p>You have 60 seconds to score as many points as possible!</p>
+          <p>Click to start!</p>
+        </div>
+        <div id="gameover-modal" class="hidden">
+          <div class="modal-content">
+            <h2>Time's Up!</h2>
+            <div class="final-stats">
+              <div class="stat-item">
+                <span class="stat-label">Final Score</span>
+                <span class="stat-value" id="final-score">0</span>
+              </div>
+              <div class="stat-item">
+                <span class="stat-label">Accuracy</span>
+                <span class="stat-value" id="final-accuracy">0%</span>
+              </div>
+              <div class="stat-item">
+                <span class="stat-label">Hits</span>
+                <span class="stat-value" id="final-hits">0</span>
+              </div>
+              <div class="stat-item">
+                <span class="stat-label">Shots Fired</span>
+                <span class="stat-value" id="final-shots">0</span>
+              </div>
+            </div>
+            <button id="restart-button">Play Again</button>
+          </div>
+        </div>
+      </div>
+    </div>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>
