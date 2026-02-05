@@ -1,104 +1,109 @@
-# 3D Aim Trainer
+# 🎯 3D Aim Trainer
 
-A physics-based aim trainer game built with Three.js and Ammo.js, inspired by Aimlabs.
+> A stylized, physics-based aim trainer that challenges you to hit as many targets as possible in 60 seconds!
 
-## Features
+**[🎮 PLAY NOW](https://garretthogan.github.io/aim-trainer/)** | [View Source](https://github.com/garretthogan/aim-trainer)
 
-- **Timed Challenge**: 60-second rounds to score as many points as possible
-- **Physics-Based Shooting**: Fire physics-enabled projectiles using Ammo.js
-- **Dynamic Targets**: Mix of stationary and moving targets
-- **Target Spawning**: New targets automatically spawn when you hit one
-- **Real-time Stats**: Track your time, score, accuracy, hits, and shots
-- **Visual Effects**: Explosion particles, dynamic lighting, and shadows
-- **Game Over Screen**: View your final stats and play again
-- **Dynamic Scoring System**: 
-  - **Base Score**: Stationary targets (50 pts) | Moving targets (100 pts)
-  - **Accuracy Multiplier**: Bullseye (100%) → Edge hit (25%)
-  - **Distance Multiplier**: Further targets = higher bonus (up to 3x)
-    - 20m = 1x (base)
-    - 45m = 2x multiplier
-    - 70m+ = 3x multiplier
-  - Visual score popup shows earned points, accuracy, and distance bonus
+![Aim Trainer Screenshot](https://img.shields.io/badge/Built%20with-Three.js-blue) ![Physics](https://img.shields.io/badge/Physics-Ammo.js-green) ![Status](https://img.shields.io/badge/Status-Live-success)
 
-## Controls
+---
 
-- **Mouse**: Look around
-- **Left Click**: Shoot
-- **W**: Move forward
-- **A**: Move left
-- **S**: Move backward
-- **D**: Move right
+## 🌟 What is This?
 
-## Technologies
+Ever wanted to improve your aim without installing a massive game? This browser-based aim trainer gives you a quick, fun way to warm up your reflexes. With **cel-shaded graphics** and **realistic physics**, you'll find yourself coming back to beat your high score.
 
-- **Three.js**: 3D graphics and rendering
-- **Ammo.js**: Physics simulation (bullets and targets)
-- **Vite**: Build tool and dev server
+## 🎮 How to Play
 
-## Architecture
+1. **Click the link above** to launch the game in your browser
+2. **Click "Click to start!"** to begin your 60-second challenge
+3. **Use your mouse** to aim and look around
+4. **Left-click** to fire physics-based projectiles
+5. **Hit targets** to score points - aim for the bullseye!
 
-This project uses an **Entity Component System (ECS)** pattern for clean, modular code organization:
+The closer to the center you hit, and the further away the target, the **more points you earn**. Can you beat 5,000 points?
 
-- **Entities**: Players, targets, and projectiles
-- **Components**: Data containers (Mesh, Physics, Target, Projectile)
-- **Systems**: Game logic (Physics, Collision, Rotation, Cleanup)
+## 💎 What Makes It Special?
 
-See [ECS_ARCHITECTURE.md](./ECS_ARCHITECTURE.md) for detailed documentation.
+### 🎨 Stylized Cel-Shaded Graphics
+Beautiful cartoon-style visuals with bold outlines and vibrant colors. It's not trying to be realistic - it's trying to be fun!
 
-## Getting Started
+### 🎯 Smart Scoring System
+- **Distance bonus**: Hitting far targets earns up to **3x points**
+- **Accuracy matters**: Bullseye hits earn 100%, edge hits only 25%
+- **Moving targets**: Worth 2x more than stationary ones
+- **Real-time feedback**: See your score pop up instantly on every hit
 
-1. Install dependencies:
+### ⚡ Physics-Powered Gameplay
+- **Real projectile physics**: Bullets affected by gravity
+- **Bouncing targets**: Targets perpetually bounce at different heights
+- **Perfect collisions**: Responsive hit detection
+- **Dynamic spawning**: New targets appear instantly when you hit one
+
+### 📊 Track Your Progress
+- **Live stats**: Score, accuracy, hits, and shots
+- **60-second timer**: Red pulsing countdown when time is running out
+- **Game over screen**: Review your performance and play again
+
+## 🏆 Can You Master It?
+
+The game is easy to learn but hard to master:
+- **Beginner**: Hit 2,000+ points
+- **Intermediate**: Hit 5,000+ points
+- **Expert**: Hit 8,000+ points
+- **Master**: Hit 10,000+ points
+
+Challenge your friends to beat your score!
+
+## 🛠️ Built With
+
+- **Three.js** - Stunning 3D graphics
+- **Ammo.js** - Realistic physics simulation
+- **Vite** - Lightning-fast dev environment
+- **Entity Component System** - Clean, professional architecture
+
+## 🚀 For Developers
+
+Want to run this locally or contribute?
+
+### Local Development
+
 ```bash
+# Install dependencies
 npm install
-```
 
-2. Run the development server:
-```bash
+# Run dev server
 npm run dev
-```
 
-3. Open your browser and navigate to the local URL (usually `http://localhost:5173`)
-
-4. Click on the screen to start playing!
-
-## Game Mechanics
-
-- **Timer**: You have 60 seconds to score as many points as possible
-  - Timer turns red and pulses when 10 seconds remain
-  - Game ends automatically when time runs out
-- **Targets**: 5 targets are active at any time
-  - 50% chance of being stationary (cyan/blue)
-  - 50% chance of being moving (red/pink)
-- **Physics**: All projectiles and moving targets use real physics simulation
-- **Boundaries**: The game area is bounded by walls that reflect projectiles and targets
-- **Projectile Lifetime**: Bullets automatically despawn after 5 seconds if they don't hit anything
-- **Game Over**: When time runs out, view your stats and click "Play Again" to restart
-
-## Building for Production
-
-```bash
+# Build for production
 npm run build
 ```
 
-The built files will be in the `dist/` directory.
+### Architecture
 
-## Preview Production Build
+This project uses a modern **Entity Component System (ECS)** architecture for maintainable, scalable code. Check out [ECS_ARCHITECTURE.md](./ECS_ARCHITECTURE.md) for details.
 
-```bash
-npm run preview
-```
+### Key Features for Developers
+- Clean separation of concerns (data vs. logic)
+- Cel-shading with custom gradient maps
+- Perpetual motion physics (zero energy loss)
+- Modular system design for easy extension
 
-## Deployment
+## 📝 License & Credits
 
-This project is configured for automatic deployment to GitHub Pages. See [DEPLOYMENT.md](./DEPLOYMENT.md) for detailed instructions.
+Built with ❤️ as a demonstration of modern web game development.
 
-### Quick Deploy
+**Technologies Used:**
+- Three.js for 3D rendering
+- Ammo.js for physics simulation
+- ECS pattern for architecture
 
-1. Create a GitHub repository named `aim-trainer`
-2. Add the remote and push:
-   ```bash
-   git remote add origin https://github.com/YOUR_USERNAME/aim-trainer.git
-   git push -u origin main
-   ```
-3. Enable GitHub Pages in repository settings (Settings → Pages → Source: GitHub Actions)
-4. Your site will be live at: `https://YOUR_USERNAME.github.io/aim-trainer/`
+## 🔗 Links
+
+- **[Play the Game](https://garretthogan.github.io/aim-trainer/)**
+- **[Source Code](https://github.com/garretthogan/aim-trainer)**
+- **[Deployment Guide](./DEPLOYMENT.md)**
+- **[Architecture Docs](./ECS_ARCHITECTURE.md)**
+
+---
+
+**Ready to test your aim?** [Click here to play!](https://garretthogan.github.io/aim-trainer/)
