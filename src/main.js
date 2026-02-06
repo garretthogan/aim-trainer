@@ -276,8 +276,19 @@ function init() {
   camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
   camera.position.set(0, 5, 10);
 
-  // Setup renderer
-  renderer = new THREE.WebGLRenderer({ antialias: true });
+  // Setup renderer. Use xrCompatible context when possible so Quest doesn't reconfigure on setSession (can cause black screen).
+  const canvas = document.createElement('canvas');
+  const gl = canvas.getContext('webgl2', {
+    antialias: true,
+    alpha: false,
+    depth: true,
+    xrCompatible: true,
+  });
+  if (gl) {
+    renderer = new THREE.WebGLRenderer({ canvas, context: gl });
+  } else {
+    renderer = new THREE.WebGLRenderer({ antialias: true });
+  }
   renderer.setSize(window.innerWidth, window.innerHeight);
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
@@ -1478,8 +1489,9 @@ function animate(time, xrFrame) {
 
   if (xrFrame && isVRActive) {
     updateVRFromFrame(xrFrame);
-    // Three.js skips scene background in XR; force clear to scene background so we don't get black
-    if (scene.background) renderer.setClearColor(scene.background);
+    // Three.js skips scene background in XR. Use a strong clear color so we see something in the headset.
+    // If you see green, the XR layer is receiving our draw; we can then debug why the scene doesn't show.
+    renderer.setClearColor(0x00cc00, 1);
   }
 
   // Update ECS systems
