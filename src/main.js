@@ -1,5 +1,7 @@
 import './style.css'
 import * as THREE from 'three'
+import { getCapsuleConfig, setCapsuleConfig, DEFAULTS } from './capsuleConfig.js'
+import { getGameSettings, setGameSettings, DEFAULTS as GameDefaults } from './gameSettings.js'
 import { World } from './ecs.js'
 import { 
   PhysicsSystem, 
@@ -7,10 +9,12 @@ import {
   CollisionSystem, 
   ProjectileCleanupSystem,
   TargetBoundsSystem,
+  CapsuleMovementSystem,
   TimerSystem
 } from './systems.js'
 import { 
   createTargetEntity, 
+  createCapsuleTargetEntity,
   createProjectileEntity, 
   createPlayerEntity 
 } from './entities.js'
@@ -48,6 +52,102 @@ let gameStarted = false;
 // Clock
 const clock = new THREE.Clock();
 
+// Route check: show settings page and skip game when path is /settings
+const base = (import.meta.env.BASE_URL || '/').replace(/\/$/, '') || ''
+const pathname = window.location.pathname
+const path = (base ? pathname.replace(base, '') : pathname) || '/'
+const isSettings = path === '/settings' || path === 'settings'
+if (isSettings) {
+  initSettingsPage()
+  // No animate() or game init
+} else {
+  runGame()
+}
+
+function initSettingsPage() {
+  const gameContainer = document.getElementById('game-container')
+  const settingsPage = document.getElementById('settings-page')
+  if (gameContainer) gameContainer.classList.add('hidden')
+  if (settingsPage) settingsPage.classList.remove('hidden')
+
+  const form = document.getElementById('capsule-settings-form')
+  const msgEl = document.getElementById('settings-message')
+  const backLink = document.getElementById('settings-back')
+  if (backLink) backLink.href = base ? base + '/' : '/'
+
+  function showMessage(text) {
+    if (!msgEl) return
+    msgEl.textContent = text
+    msgEl.classList.remove('hidden')
+    setTimeout(() => msgEl.classList.add('hidden'), 2500)
+  }
+
+  function loadForm() {
+    const config = getCapsuleConfig()
+    const game = getGameSettings()
+    const r = document.getElementById('capsule-radius')
+    const h = document.getElementById('capsule-height')
+    const s = document.getElementById('capsule-speed')
+    if (r) r.value = config.radius
+    if (h) h.value = config.height
+    if (s) s.value = config.movementSpeed
+    const t = document.getElementById('game-timer')
+    const minT = document.getElementById('game-min-targets')
+    const maxT = document.getElementById('game-max-targets')
+    const minC = document.getElementById('game-min-capsules')
+    const maxC = document.getElementById('game-max-capsules')
+    if (t) t.value = game.timerDuration
+    if (minT) minT.value = game.minTargets
+    if (maxT) maxT.value = game.maxTargets
+    if (minC) minC.value = game.minCapsules
+    if (maxC) maxC.value = game.maxCapsules
+  }
+
+  loadForm()
+
+  if (form) {
+    form.addEventListener('submit', (e) => {
+      e.preventDefault()
+      setCapsuleConfig({
+        radius: form.radius?.value,
+        height: form.height?.value,
+        movementSpeed: form.movementSpeed?.value,
+      })
+      setGameSettings({
+        timerDuration: form.timerDuration?.value,
+        minTargets: form.minTargets?.value,
+        maxTargets: form.maxTargets?.value,
+        minCapsules: form.minCapsules?.value,
+        maxCapsules: form.maxCapsules?.value,
+      })
+      showMessage('Settings saved.')
+      loadForm()
+    })
+  }
+
+  const resetBtn = document.getElementById('settings-reset')
+  if (resetBtn) {
+    resetBtn.addEventListener('click', () => {
+      setCapsuleConfig(DEFAULTS)
+      setGameSettings(GameDefaults)
+      loadForm()
+      showMessage('Reset to defaults.')
+    })
+  }
+}
+
+function runGame() {
+  loadAmmo().then((Ammo) => {
+    AmmoLib = Ammo
+    console.log('Ammo.js loaded successfully!')
+    init()
+    animate()
+  }).catch(error => {
+    console.error('Failed to load Ammo.js:', error)
+    document.getElementById('instructions').innerHTML = '<p>Failed to load physics engine</p><p>Please refresh the page</p>'
+  })
+}
+
 // Load Ammo.js dynamically
 async function loadAmmo() {
   const script = document.createElement('script');
@@ -76,16 +176,6 @@ async function loadAmmo() {
   });
 }
 
-// Initialize Ammo.js and start the game
-loadAmmo().then((Ammo) => {
-  AmmoLib = Ammo;
-  console.log('Ammo.js loaded successfully!');
-  init();
-  animate();
-}).catch(error => {
-  console.error('Failed to load Ammo.js:', error);
-  document.getElementById('instructions').innerHTML = '<p>Failed to load physics engine</p><p>Please refresh the page</p>';
-});
 
 function init() {
   // Setup scene - solid color background for cel-shaded look
@@ -142,6 +232,7 @@ function init() {
 
   // Add systems
   world.addSystem(new PhysicsSystem(physicsWorld, tmpTrans));
+  world.addSystem(new CapsuleMovementSystem(camera));
   world.addSystem(new TargetRotationSystem(camera));
   world.addSystem(new CollisionSystem(scene, physicsWorld, AmmoLib, camera, onTargetHit));
   world.addSystem(new ProjectileCleanupSystem(scene, physicsWorld));
@@ -151,8 +242,11 @@ function init() {
   // Create game entities
   playerEntity = createPlayerEntity(world, camera);
   gameTimerEntity = world.createEntity();
-  gameTimerEntity.addComponent(new GameTimerComponent(60));
-  
+  const initialDuration = getGameSettings().timerDuration;
+  gameTimerEntity.addComponent(new GameTimerComponent(initialDuration));
+  const timerElInit = document.getElementById('timer');
+  if (timerElInit) timerElInit.textContent = initialDuration;
+
   gameStateEntity = world.createEntity();
   gameStateEntity.addComponent(new GameStateComponent());
 
@@ -161,11 +255,6 @@ function init() {
 
   // Create walls
   createWalls();
-
-  // Create initial targets
-  for (let i = 0; i < 5; i++) {
-    createTargetEntity(world, scene, physicsWorld, AmmoLib, camera);
-  }
 
   // Setup controls
   setupControls();
@@ -328,14 +417,21 @@ function onTargetHit(targetEntity, projectileEntity, normalizedDistance, targetD
   // Calculate accuracy multiplier (closer to center = higher score)
   const accuracyMultiplier = 1.0 - (normalizedDistance * 0.75);
   
-  // Calculate distance multiplier (further targets = higher score)
-  // Base distance is 20 units (minimum spawn distance)
-  // Every 10 units beyond that adds 20% bonus, capped at 3x
-  const distanceBonus = Math.min((targetDistance - 20) / 50, 2.0);
-  const distanceMultiplier = 1.0 + distanceBonus;
-  
   const targetComp = targetEntity.getComponent(TargetComponent);
-  const baseScore = targetComp.isMoving ? 100 : 50;
+  // Capsule: much stronger distance bonus (further = many more points)
+  let distanceMultiplier;
+  if (targetComp.isCapsule) {
+    const distanceBonus = Math.min((targetDistance - 20) / 20, 4.0);
+    distanceMultiplier = 1.0 + distanceBonus;
+  } else {
+    // Every 10 units beyond 20 adds 20% bonus, capped at 3x
+    const distanceBonus = Math.min((targetDistance - 20) / 50, 2.0);
+    distanceMultiplier = 1.0 + distanceBonus;
+  }
+  let baseScore = targetComp.isMoving ? 100 : 50;
+  if (targetComp.isCapsule) {
+    baseScore = 60;
+  }
   const earnedScore = Math.round(baseScore * accuracyMultiplier * distanceMultiplier);
   
   score += earnedScore;
@@ -348,8 +444,20 @@ function onTargetHit(targetEntity, projectileEntity, normalizedDistance, targetD
     createExplosion(meshComp.mesh.position);
   }
   
-  // Spawn new target
-  createTargetEntity(world, scene, physicsWorld, AmmoLib, camera);
+  const game = getGameSettings();
+  const targets = world.getEntitiesWith(TargetComponent);
+  const capsuleCount = targets.filter(e => e.getComponent(TargetComponent).isCapsule).length;
+  const targetCount = targets.filter(e => !e.getComponent(TargetComponent).isCapsule).length;
+
+  if (targetComp.isCapsule) {
+    if (capsuleCount <= game.maxCapsules) {
+      createCapsuleTargetEntity(world, scene, camera);
+    }
+  } else {
+    if (targetCount <= game.maxTargets) {
+      createTargetEntity(world, scene, physicsWorld, AmmoLib, camera);
+    }
+  }
 }
 
 function showScorePopup(position, earnedScore, normalizedDistance, targetDistance, distanceMultiplier) {
@@ -546,13 +654,30 @@ function startGame() {
   gameStarted = true;
   document.getElementById('instructions').classList.add('hidden');
   
-  // Start timer
+  const game = getGameSettings();
   const timer = gameTimerEntity.getComponent(GameTimerComponent);
+  timer.duration = game.timerDuration;
+  timer.reset();
   timer.start();
-  
-  // Update game state
+
+  const timerEl = document.getElementById('timer');
+  if (timerEl) timerEl.textContent = game.timerDuration;
+
   const gameState = gameStateEntity.getComponent(GameStateComponent);
   gameState.state = 'playing';
+
+  const targetLo = Math.min(game.minTargets, game.maxTargets);
+  const targetHi = Math.max(game.minTargets, game.maxTargets);
+  const capsuleLo = Math.min(game.minCapsules, game.maxCapsules);
+  const capsuleHi = Math.max(game.minCapsules, game.maxCapsules);
+  const numTargets = targetLo + Math.floor(Math.random() * (targetHi - targetLo + 1));
+  const numCapsules = capsuleLo + Math.floor(Math.random() * (capsuleHi - capsuleLo + 1));
+  for (let i = 0; i < numTargets; i++) {
+    createTargetEntity(world, scene, physicsWorld, AmmoLib, camera);
+  }
+  for (let i = 0; i < numCapsules; i++) {
+    createCapsuleTargetEntity(world, scene, camera);
+  }
   
   renderer.domElement.requestPointerLock();
 }
@@ -586,32 +711,35 @@ function showGameOverModal() {
 }
 
 function restartGame() {
-  // Hide modal
   document.getElementById('gameover-modal').classList.add('hidden');
   
-  // Reset stats
   score = 0;
   hits = 0;
   shots = 0;
   updateStats();
   
-  // Reset timer
+  const game = getGameSettings();
   const timer = gameTimerEntity.getComponent(GameTimerComponent);
+  timer.duration = game.timerDuration;
   timer.reset();
   
-  // Clear all targets and projectiles
   clearAllEntities();
   
-  // Create new targets
-  for (let i = 0; i < 5; i++) {
+  const targetLo = Math.min(game.minTargets, game.maxTargets);
+  const targetHi = Math.max(game.minTargets, game.maxTargets);
+  const capsuleLo = Math.min(game.minCapsules, game.maxCapsules);
+  const capsuleHi = Math.max(game.minCapsules, game.maxCapsules);
+  const numTargets = targetLo + Math.floor(Math.random() * (targetHi - targetLo + 1));
+  const numCapsules = capsuleLo + Math.floor(Math.random() * (capsuleHi - capsuleLo + 1));
+  for (let i = 0; i < numTargets; i++) {
     createTargetEntity(world, scene, physicsWorld, AmmoLib, camera);
   }
+  for (let i = 0; i < numCapsules; i++) {
+    createCapsuleTargetEntity(world, scene, camera);
+  }
   
-  // Update game state
   const gameState = gameStateEntity.getComponent(GameStateComponent);
   gameState.state = 'menu';
-  
-  // Show instructions again
   document.getElementById('instructions').classList.remove('hidden');
 }
 

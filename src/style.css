@@ -223,3 +223,116 @@ canvas {
   box-shadow: 0 6px 20px rgba(76, 175, 80, 0.6);
   background: linear-gradient(135deg, #45a049 0%, #4CAF50 100%);
 }
+
+.hidden {
+  display: none !important;
+}
+
+/* Settings page */
+#settings-page {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #87ceeb;
+  padding: 20px;
+}
+
+.settings-container {
+  background: rgba(255, 255, 255, 0.95);
+  padding: 2rem 2.5rem;
+  border-radius: 12px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.15);
+  max-width: 420px;
+  width: 100%;
+}
+
+.settings-container h1 {
+  margin-bottom: 1.5rem;
+  color: #333;
+  font-size: 1.75rem;
+}
+
+.settings-section-title {
+  margin: 1.25rem 0 0.5rem;
+  color: #555;
+  font-size: 1.1rem;
+  font-weight: 600;
+}
+
+.settings-section-title:first-of-type {
+  margin-top: 0;
+}
+
+#capsule-settings-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  margin-bottom: 1.25rem;
+  color: #444;
+  font-weight: 500;
+}
+
+#capsule-settings-form input[type="number"] {
+  padding: 0.5rem 0.75rem;
+  font-size: 1rem;
+  border: 1px solid #ccc;
+  border-radius: 8px;
+}
+
+.settings-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: center;
+  margin-top: 1.5rem;
+}
+
+.settings-actions button {
+  padding: 0.6rem 1.2rem;
+  font-size: 1rem;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  background: #4CAF50;
+  color: white;
+  font-weight: 600;
+}
+
+.settings-actions button[type="button"] {
+  background: #666;
+}
+
+.settings-actions button:hover {
+  opacity: 0.9;
+}
+
+.settings-actions a {
+  color: #2196F3;
+  text-decoration: none;
+  font-weight: 500;
+}
+
+.settings-actions a:hover {
+  text-decoration: underline;
+}
+
+.settings-message {
+  margin-top: 1rem;
+  color: #2e7d32;
+  font-size: 0.95rem;
+}
+
+.settings-message.hidden {
+  display: none !important;
+}
+
+.settings-link {
+  color: rgba(255, 255, 255, 0.9);
+  text-decoration: underline;
+  pointer-events: auto;
+}
+
+.settings-link:hover {
+  color: white;
+}

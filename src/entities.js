@@ -1,11 +1,13 @@
 // Entity factory functions
 import * as THREE from 'three';
+import { getCapsuleConfig } from './capsuleConfig.js';
 import { 
   MeshComponent, 
   PhysicsComponent, 
   TargetComponent, 
   ProjectileComponent,
-  PlayerComponent 
+  PlayerComponent,
+  CapsuleMovementComponent
 } from './components.js';
 
 export function createTargetTexture(isMoving) {
@@ -284,6 +286,78 @@ export function createProjectileEntity(world, scene, physicsWorld, AmmoLib, came
   entity.addComponent(new PhysicsComponent(body));
   entity.addComponent(new ProjectileComponent(Date.now()));
 
+  return entity;
+}
+
+export function createCapsuleTargetEntity(world, scene, camera) {
+  const config = getCapsuleConfig();
+  const radius = Math.max(0.1, config.radius);
+  const length = Math.max(0.1, config.height - 2 * radius);
+  const geometry = new THREE.CapsuleGeometry(radius, length, 8, 24);
+  geometry.computeVertexNormals();
+  const capsuleGradientColors = new Uint8Array(4);
+  capsuleGradientColors[0] = 80;
+  capsuleGradientColors[1] = 140;
+  capsuleGradientColors[2] = 200;
+  capsuleGradientColors[3] = 255;
+  const capsuleGradientMap = new THREE.DataTexture(capsuleGradientColors, 4, 1, THREE.RedFormat);
+  capsuleGradientMap.needsUpdate = true;
+  capsuleGradientMap.minFilter = THREE.LinearFilter;
+  capsuleGradientMap.magFilter = THREE.LinearFilter;
+  const material = new THREE.MeshToonMaterial({
+    color: 0xff6600,
+    gradientMap: capsuleGradientMap,
+    emissive: 0x000000,
+    emissiveIntensity: 0,
+    transparent: false,
+    opacity: 1,
+    depthWrite: true,
+    depthTest: true,
+    side: THREE.FrontSide
+  });
+  const capsuleMesh = new THREE.Mesh(geometry, material);
+  capsuleMesh.renderOrder = 0;
+  capsuleMesh.frustumCulled = false;
+
+  const outlineGeometry = new THREE.CapsuleGeometry(radius + 0.08, length + 0.16, 8, 24);
+  const outlineMaterial = new THREE.MeshBasicMaterial({
+    color: 0x000000,
+    side: THREE.BackSide,
+    depthWrite: false,
+    depthTest: true
+  });
+  const outline = new THREE.Mesh(outlineGeometry, outlineMaterial);
+  outline.renderOrder = 1;
+
+  const groundHeight = length / 2 + radius;
+  const minDistance = 60;
+  const maxDistance = 85;
+  const startDistance = minDistance + Math.random() * (maxDistance - minDistance);
+  let dirXZ = new THREE.Vector3(
+    (Math.random() - 0.5) * 2,
+    0,
+    (Math.random() - 0.5) * 2
+  );
+  if (dirXZ.lengthSq() < 0.01) dirXZ.set(0, 0, -1);
+  dirXZ.normalize();
+
+  const group = new THREE.Group();
+  group.add(capsuleMesh);
+  group.add(outline);
+  group.position.set(
+    camera.position.x + dirXZ.x * startDistance,
+    groundHeight,
+    camera.position.z + dirXZ.z * startDistance
+  );
+  capsuleMesh.castShadow = true;
+  capsuleMesh.receiveShadow = true;
+  scene.add(group);
+
+  const hitRadius = (radius * 2 + length) * 0.5;
+  const entity = world.createEntity();
+  entity.addComponent(new MeshComponent(group));
+  entity.addComponent(new TargetComponent(true, hitRadius, true));
+  entity.addComponent(new CapsuleMovementComponent(config.movementSpeed, 10, groundHeight));
   return entity;
 }
 

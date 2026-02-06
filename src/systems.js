@@ -7,9 +7,14 @@ import {
   ProjectileComponent,
   PlayerComponent,
   GameTimerComponent,
-  GameStateComponent
+  GameStateComponent,
+  CapsuleMovementComponent
 } from './components.js';
 import * as THREE from 'three';
+
+const _up = new THREE.Vector3(0, 1, 0);
+const _toPlayer = new THREE.Vector3();
+const _perpendicular = new THREE.Vector3();
 
 export class PhysicsSystem extends System {
   constructor(physicsWorld, tmpTrans) {
@@ -48,12 +53,50 @@ export class TargetRotationSystem extends System {
   }
 
   update(deltaTime) {
-    // Make all targets face the camera
+    // Make flat targets face the camera (skip 3D capsule so it stays volumetric)
     const targets = this.world.getEntitiesWith(TargetComponent, MeshComponent);
     
     targets.forEach(entity => {
+      const target = entity.getComponent(TargetComponent);
+      if (target.isCapsule) return;
       const mesh = entity.getComponent(MeshComponent);
       mesh.mesh.lookAt(this.camera.position);
+    });
+  }
+}
+
+export class CapsuleMovementSystem extends System {
+  constructor(camera) {
+    super();
+    this.camera = camera;
+  }
+
+  update(deltaTime) {
+    const dt = Math.min(deltaTime, 0.1);
+    const capsules = this.world.getEntitiesWith(
+      CapsuleMovementComponent,
+      MeshComponent,
+      TargetComponent
+    );
+    const cam = this.camera.position;
+    capsules.forEach(entity => {
+      const movement = entity.getComponent(CapsuleMovementComponent);
+      const meshComp = entity.getComponent(MeshComponent);
+      const root = meshComp.mesh;
+      if (movement.stopped) return;
+      const pos = root.position;
+      _toPlayer.set(cam.x - pos.x, 0, cam.z - pos.z);
+      const distance = _toPlayer.length();
+      if (distance <= movement.minDistance) {
+        movement.stopped = true;
+        return;
+      }
+      _toPlayer.normalize();
+      const step = movement.approachSpeed * dt;
+      const bound = 44;
+      root.position.x = Math.max(-bound, Math.min(bound, pos.x + _toPlayer.x * step));
+      root.position.y = movement.groundHeight;
+      root.position.z = Math.max(-bound, Math.min(bound, pos.z + _toPlayer.z * step));
     });
   }
 }
@@ -107,7 +150,7 @@ export class CollisionSystem extends System {
       this.scene.remove(meshComp.mesh);
     }
 
-    // Remove physics body
+    // Remove physics body if present (capsules have no physics)
     const physicsComp = entity.getComponent(PhysicsComponent);
     if (physicsComp) {
       this.physicsWorld.removeRigidBody(physicsComp.body);
@@ -209,12 +252,17 @@ export class TimerSystem extends System {
           }
         }
 
-        // Time's up!
         if (timer.timeRemaining <= 0) {
           timer.stop();
-          if (this.onTimeUp) {
-            this.onTimeUp();
-          }
+          timer.pendingGameOver = true;
+        }
+      }
+
+      if (timer.pendingGameOver) {
+        const projectiles = this.world.getEntitiesWith(ProjectileComponent);
+        if (projectiles.length === 0) {
+          timer.pendingGameOver = false;
+          if (this.onTimeUp) this.onTimeUp();
         }
       }
     });

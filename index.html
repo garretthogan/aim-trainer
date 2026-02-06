@@ -7,6 +7,53 @@
     <title>Aim Trainer 3D</title>
   </head>
   <body>
+    <div id="settings-page" class="hidden">
+      <div class="settings-container">
+        <h1>Settings</h1>
+        <form id="capsule-settings-form">
+          <h2 class="settings-section-title">Capsule</h2>
+          <label>
+            Capsule radius
+            <input type="number" id="capsule-radius" name="radius" min="0.1" max="3" step="0.1" />
+          </label>
+          <label>
+            Capsule height (total)
+            <input type="number" id="capsule-height" name="height" min="0.5" max="10" step="0.1" />
+          </label>
+          <label>
+            Movement speed
+            <input type="number" id="capsule-speed" name="movementSpeed" min="1" max="100" step="1" />
+          </label>
+          <h2 class="settings-section-title">Game</h2>
+          <label>
+            Timer (seconds)
+            <input type="number" id="game-timer" name="timerDuration" min="5" max="300" step="1" />
+          </label>
+          <label>
+            Min targets on stage
+            <input type="number" id="game-min-targets" name="minTargets" min="0" max="20" step="1" />
+          </label>
+          <label>
+            Max targets on stage
+            <input type="number" id="game-max-targets" name="maxTargets" min="0" max="20" step="1" />
+          </label>
+          <label>
+            Min capsules on stage
+            <input type="number" id="game-min-capsules" name="minCapsules" min="0" max="10" step="1" />
+          </label>
+          <label>
+            Max capsules on stage
+            <input type="number" id="game-max-capsules" name="maxCapsules" min="0" max="10" step="1" />
+          </label>
+          <div class="settings-actions">
+            <button type="submit">Save</button>
+            <button type="button" id="settings-reset">Reset to defaults</button>
+            <a href="./" id="settings-back">Back to game</a>
+          </div>
+        </form>
+        <p id="settings-message" class="settings-message hidden"></p>
+      </div>
+    </div>
     <div id="game-container">
       <div id="hud">
         <div id="crosshair"></div>
@@ -21,6 +68,7 @@
           <p>Click to shoot • Mouse to look around</p>
           <p>You have 60 seconds to score as many points as possible!</p>
           <p>Click to start!</p>
+          <p><a href="./settings" class="settings-link">Settings</a></p>
         </div>
         <div id="gameover-modal" class="hidden">
           <div class="modal-content">
