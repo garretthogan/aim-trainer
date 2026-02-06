@@ -53,6 +53,7 @@ let gameStarted = false;
 const clock = new THREE.Clock();
 
 // Path-based routing: /settings shows settings (no # in URL)
+// Use History API for in-app navigation so "Back to game" never triggers a new request (avoids 404 on deploy)
 const base = (import.meta.env.BASE_URL || '/').replace(/\/$/, '') || ''
 let gameInitialized = false
 let settingsPageInitialized = false
@@ -84,6 +85,31 @@ function route() {
   }
 }
 
+function navigateTo(path) {
+  const url = base ? `${base}${path}` : path
+  history.pushState(null, '', url)
+  route()
+}
+
+document.body.addEventListener('click', (e) => {
+  const link = e.target.closest('a')
+  if (!link) return
+  if (link.id === 'settings-back') {
+    e.preventDefault()
+    e.stopPropagation()
+    navigateTo('/')
+    return
+  }
+  if (link.classList.contains('settings-link')) {
+    e.preventDefault()
+    e.stopPropagation()
+    navigateTo('/settings')
+    return
+  }
+}, true)
+
+window.addEventListener('popstate', route)
+
 route()
 
 function initSettingsPage() {
@@ -91,6 +117,7 @@ function initSettingsPage() {
   const msgEl = document.getElementById('settings-message')
   const backLink = document.getElementById('settings-back')
   if (backLink) backLink.href = base ? `${base}/` : '/'
+  // Navigation is handled by document click listener (History API) to avoid 404 on deploy
 
   function showMessage(text) {
     if (!msgEl) return
