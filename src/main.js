@@ -29,6 +29,8 @@ import {
 
 // Game state
 let scene, camera, renderer;
+/** Main directional light (casts shadows). Toggled off in VR to avoid Quest overload. */
+let mainDirectionalLight = null;
 let physicsWorld;
 let tmpTrans;
 let AmmoLib;
@@ -284,16 +286,16 @@ function init() {
   const ambientLight = new THREE.AmbientLight(0xffffff, 0.8);
   scene.add(ambientLight);
 
-  const directionalLight = new THREE.DirectionalLight(0xffffff, 1.2);
-  directionalLight.position.set(10, 20, 10);
-  directionalLight.castShadow = true;
-  directionalLight.shadow.camera.left = -50;
-  directionalLight.shadow.camera.right = 50;
-  directionalLight.shadow.camera.top = 50;
-  directionalLight.shadow.camera.bottom = -50;
-  directionalLight.shadow.mapSize.width = 2048;
-  directionalLight.shadow.mapSize.height = 2048;
-  scene.add(directionalLight);
+  mainDirectionalLight = new THREE.DirectionalLight(0xffffff, 1.2);
+  mainDirectionalLight.position.set(10, 20, 10);
+  mainDirectionalLight.castShadow = true;
+  mainDirectionalLight.shadow.camera.left = -50;
+  mainDirectionalLight.shadow.camera.right = 50;
+  mainDirectionalLight.shadow.camera.top = 50;
+  mainDirectionalLight.shadow.camera.bottom = -50;
+  mainDirectionalLight.shadow.mapSize.width = 2048;
+  mainDirectionalLight.shadow.mapSize.height = 2048;
+  scene.add(mainDirectionalLight);
 
   // Additional directional light from opposite side
   const directionalLight2 = new THREE.DirectionalLight(0xffffff, 0.6);
@@ -512,13 +514,19 @@ async function enterVR() {
       optionalFeatures: ['local-floor'],
     });
     isVRActive = true;
+    // Reduce GPU load on Quest to avoid freeze/crash: disable shadows in VR
+    renderer.shadowMap.enabled = false;
+    if (mainDirectionalLight) mainDirectionalLight.castShadow = false;
+    scene.traverse((obj) => {
+      if (obj.castShadow !== undefined) obj.castShadow = false;
+      if (obj.receiveShadow !== undefined) obj.receiveShadow = false;
+    });
     await renderer.xr.setSession(vrSession);
     xrReferenceSpace = renderer.xr.getReferenceSpace?.() || await vrSession.requestReferenceSpace('local-floor');
     createVRReticle();
     const crosshairEl = document.getElementById('crosshair');
     if (crosshairEl) crosshairEl.style.visibility = 'hidden';
     document.getElementById('instructions').classList.add('hidden');
-    if (!gameStarted) startGame();
     if (nonVRLoopId != null) cancelAnimationFrame(nonVRLoopId);
     nonVRLoopId = null;
     renderer.setAnimationLoop(animate);
@@ -526,6 +534,10 @@ async function enterVR() {
     vrSession.addEventListener('selectstart', onVRSelectStart);
     vrSession.addEventListener('selectend', onVRSelectEnd);
     if (typeof window.__updateFullscreenVRButtonLabel === 'function') window.__updateFullscreenVRButtonLabel();
+    // Defer startGame to next frame so we don't spike CPU/memory in the same tick as XR session start (prevents Quest freeze)
+    requestAnimationFrame(() => {
+      if (isVRActive && !gameStarted) startGame();
+    });
   } catch (err) {
     console.warn('VR session failed:', err);
     isVRActive = false;
@@ -568,6 +580,13 @@ function onVRSessionEnd() {
   vrTriggerPressedLastFrame = false;
   if (vrReticle && scene) scene.remove(vrReticle);
   vrReticle = null;
+  // Restore shadows for desktop
+  renderer.shadowMap.enabled = true;
+  if (mainDirectionalLight) mainDirectionalLight.castShadow = true;
+  scene.traverse((obj) => {
+    if (obj.castShadow !== undefined) obj.castShadow = true;
+    if (obj.receiveShadow !== undefined) obj.receiveShadow = true;
+  });
   const crosshairEl = document.getElementById('crosshair');
   if (crosshairEl) crosshairEl.style.visibility = '';
   renderer.setAnimationLoop(null);
