@@ -52,28 +52,45 @@ let gameStarted = false;
 // Clock
 const clock = new THREE.Clock();
 
-// Route check: show settings page and skip game when path is /settings
+// Path-based routing: /settings shows settings (no # in URL)
 const base = (import.meta.env.BASE_URL || '/').replace(/\/$/, '') || ''
-const pathname = window.location.pathname
-const path = (base ? pathname.replace(base, '') : pathname) || '/'
-const isSettings = path === '/settings' || path === 'settings'
-if (isSettings) {
-  initSettingsPage()
-  // No animate() or game init
-} else {
-  runGame()
+let gameInitialized = false
+let settingsPageInitialized = false
+
+function getIsSettingsRoute() {
+  const path = base ? window.location.pathname.replace(new RegExp(`^${base.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`), '') || '/' : window.location.pathname
+  const normalized = path.replace(/\/$/, '') || '/'
+  return normalized === '/settings' || normalized === 'settings'
 }
 
-function initSettingsPage() {
+function route() {
+  const isSettings = getIsSettingsRoute()
   const gameContainer = document.getElementById('game-container')
   const settingsPage = document.getElementById('settings-page')
-  if (gameContainer) gameContainer.classList.add('hidden')
-  if (settingsPage) settingsPage.classList.remove('hidden')
+  if (isSettings) {
+    if (gameContainer) gameContainer.classList.add('hidden')
+    if (settingsPage) settingsPage.classList.remove('hidden')
+    if (!settingsPageInitialized) {
+      settingsPageInitialized = true
+      initSettingsPage()
+    }
+  } else {
+    if (settingsPage) settingsPage.classList.add('hidden')
+    if (gameContainer) gameContainer.classList.remove('hidden')
+    if (!gameInitialized) {
+      gameInitialized = true
+      runGame()
+    }
+  }
+}
 
+route()
+
+function initSettingsPage() {
   const form = document.getElementById('capsule-settings-form')
   const msgEl = document.getElementById('settings-message')
   const backLink = document.getElementById('settings-back')
-  if (backLink) backLink.href = base ? base + '/' : '/'
+  if (backLink) backLink.href = base ? `${base}/` : '/'
 
   function showMessage(text) {
     if (!msgEl) return
