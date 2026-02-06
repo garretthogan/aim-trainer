@@ -460,13 +460,20 @@ function createWalls() {
   });
 }
 
-const impactSoundUrl = (import.meta.env.BASE_URL || '/') + 'sounds/impact.wav';
+const soundBase = (import.meta.env.BASE_URL || '/').replace(/\/?$/, '/');
+const impactSoundUrl = soundBase + 'sounds/impact.wav';
 
 let audioContext = null;
 let impactSoundBuffer = null;
 let impactSoundLoadPromise = null;
 const _listenerForward = new THREE.Vector3();
 const _listenerUp = new THREE.Vector3(0, 1, 0);
+
+function resumeAudioContext() {
+  if (audioContext && audioContext.state === 'suspended') {
+    audioContext.resume().catch(() => {});
+  }
+}
 
 function ensureImpactSoundReady() {
   if (impactSoundBuffer) return Promise.resolve();
@@ -530,6 +537,7 @@ function onTargetHit(targetEntity, projectileEntity, normalizedDistance, targetD
   const hitPosition = meshComp?.mesh?.position ? meshComp.mesh.position.clone() : null;
   ensureImpactSoundReady().then(() => {
     if (hitPosition && impactSoundBuffer) {
+      resumeAudioContext();
       updateSpatialAudioListener(camera);
       playSpatialImpact(hitPosition);
     }
@@ -736,11 +744,12 @@ function createExplosion(position) {
   animateExplosion();
 }
 
-const swingSoundUrl = (import.meta.env.BASE_URL || '/') + 'sounds/swing.wav';
+const swingSoundUrl = soundBase + 'sounds/swing.wav';
 
 function shootProjectile() {
   if (!gameStarted || document.pointerLockElement !== renderer.domElement) return;
   
+  resumeAudioContext();
   try {
     const swing = new Audio(swingSoundUrl);
     swing.volume = 0.5;
@@ -794,7 +803,7 @@ function startGame() {
   const gameState = gameStateEntity.getComponent(GameStateComponent);
   gameState.state = 'playing';
 
-  ensureImpactSoundReady();
+  ensureImpactSoundReady().then(() => resumeAudioContext());
 
   const targetLo = Math.min(game.minTargets, game.maxTargets);
   const targetHi = Math.max(game.minTargets, game.maxTargets);
