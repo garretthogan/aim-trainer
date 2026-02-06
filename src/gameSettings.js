@@ -9,23 +9,32 @@ export const DIFFICULTIES = {
 
 const DEFAULT_DIFFICULTY = 'medium';
 
+const DEFAULT_LOOK_SENSITIVITY = 1;
+
 const DEFAULTS = {
   difficulty: DEFAULT_DIFFICULTY,
+  lookSensitivity: DEFAULT_LOOK_SENSITIVITY,
 };
 
 function isValidDifficulty(value) {
   return value === 'easy' || value === 'medium' || value === 'hard';
 }
 
+function clampSensitivity(value) {
+  const n = Number(value);
+  return Number.isNaN(n) ? DEFAULT_LOOK_SENSITIVITY : Math.max(0.25, Math.min(3, n));
+}
+
 export function getGameSettings() {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return getSettingsFromDifficulty(DEFAULTS.difficulty);
+    if (!raw) return { ...getSettingsFromDifficulty(DEFAULTS.difficulty), lookSensitivity: DEFAULTS.lookSensitivity };
     const parsed = JSON.parse(raw);
     const difficulty = isValidDifficulty(parsed.difficulty) ? parsed.difficulty : DEFAULTS.difficulty;
-    return getSettingsFromDifficulty(difficulty);
+    const lookSensitivity = clampSensitivity(parsed.lookSensitivity);
+    return { ...getSettingsFromDifficulty(difficulty), lookSensitivity };
   } catch {
-    return getSettingsFromDifficulty(DEFAULTS.difficulty);
+    return { ...getSettingsFromDifficulty(DEFAULTS.difficulty), lookSensitivity: DEFAULTS.lookSensitivity };
   }
 }
 
@@ -44,9 +53,10 @@ function getSettingsFromDifficulty(difficulty) {
 
 export function setGameSettings(settings) {
   const difficulty = isValidDifficulty(settings.difficulty) ? settings.difficulty : DEFAULTS.difficulty;
-  const stored = { difficulty };
+  const lookSensitivity = clampSensitivity(settings.lookSensitivity);
+  const stored = { difficulty, lookSensitivity };
   localStorage.setItem(STORAGE_KEY, JSON.stringify(stored));
-  return getSettingsFromDifficulty(difficulty);
+  return { ...getSettingsFromDifficulty(difficulty), lookSensitivity };
 }
 
 export { DEFAULTS };

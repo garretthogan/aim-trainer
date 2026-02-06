@@ -149,9 +149,23 @@ function initSettingsPage() {
     if (s) s.value = config.movementSpeed
     const difficultyEl = document.getElementById('game-difficulty')
     if (difficultyEl) difficultyEl.value = game.difficulty
+    const lookEl = document.getElementById('game-look-sensitivity')
+    const lookValEl = document.getElementById('look-sensitivity-value')
+    if (lookEl) {
+      lookEl.value = Math.round((game.lookSensitivity ?? 1) * 100)
+      if (lookValEl) lookValEl.textContent = Math.round((game.lookSensitivity ?? 1) * 100) + '%'
+    }
   }
 
   loadForm()
+
+  const lookEl = document.getElementById('game-look-sensitivity')
+  const lookValEl = document.getElementById('look-sensitivity-value')
+  if (lookEl && lookValEl) {
+    lookEl.addEventListener('input', () => {
+      lookValEl.textContent = lookEl.value + '%'
+    })
+  }
 
   if (form) {
     form.addEventListener('submit', (e) => {
@@ -161,7 +175,10 @@ function initSettingsPage() {
         height: form.height?.value,
         movementSpeed: form.movementSpeed?.value,
       })
-      setGameSettings({ difficulty: form.difficulty?.value })
+      setGameSettings({
+        difficulty: form.difficulty?.value,
+        lookSensitivity: parseInt(form.lookSensitivity?.value, 10) / 100,
+      })
       showMessage('Settings saved.')
       loadForm()
     })
@@ -895,10 +912,12 @@ function setupControls() {
 
     const movementX = event.movementX || 0;
     const movementY = event.movementY || 0;
+    const sensitivity = getGameSettings().lookSensitivity ?? 1;
+    const factor = 0.002 * sensitivity;
 
     controls.euler.setFromQuaternion(camera.quaternion);
-    controls.euler.y -= movementX * 0.002;
-    controls.euler.x -= movementY * 0.002;
+    controls.euler.y -= movementX * factor;
+    controls.euler.x -= movementY * factor;
     controls.euler.x = Math.max(-controls.PI_2, Math.min(controls.PI_2, controls.euler.x));
     camera.quaternion.setFromEuler(controls.euler);
   });
