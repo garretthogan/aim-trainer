@@ -4,6 +4,7 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="bullseye.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta http-equiv="Permissions-Policy" content="xr-spatial-tracking=(self)" />
     <title>Aim Trainer 3D</title>
   </head>
   <body>
@@ -54,6 +55,8 @@
           <span>Volume</span>
           <input type="range" id="sound-volume" min="0" max="100" value="100" title="Volume" />
         </label>
+        <button type="button" id="enter-vr-btn" class="hidden" title="Enter VR">Enter VR</button>
+        <button type="button" id="fullscreen-btn" title="Full screen" aria-label="Toggle full screen">⛶</button>
       </div>
       <div id="hud">
         <div id="crosshair"></div>
@@ -68,6 +71,7 @@
           <p>Click to shoot • Mouse to look around</p>
           <p>You have <span id="instructions-timer">60</span> seconds to score as many points as possible!</p>
           <p>Click to start!</p>
+          <p id="vr-hint" class="vr-hint hidden"></p>
           <p><a href="./settings" class="settings-link">Settings</a></p>
         </div>
         <div id="pause-menu" class="hidden">

@@ -50,7 +50,20 @@ let shots = 0;
 let gameStarted = false;
 let gamePaused = false;
 let gamePausedWhenLeftForSettings = false;
+/** When true, we re-enter fullscreen on fullscreenchange (browser may exit fullscreen when pointer lock is released). */
+let reenterFullscreenWhenPaused = false;
 let hadPointerLock = false;
+let isVRActive = false;
+let vrSession = null;
+/** Set when WebXR immersive-vr is supported; fullscreen button then enters VR on VR devices. */
+let vrSupported = false;
+let nonVRLoopId = null;
+let xrReferenceSpace = null;
+const vrControllerPosition = new THREE.Vector3();
+const vrControllerQuaternion = new THREE.Quaternion();
+const vrControllerDirection = new THREE.Vector3(0, 0, -1);
+let vrReticle = null;
+let vrTriggerPressedLastFrame = false;
 
 // Clock
 const clock = new THREE.Clock();
@@ -263,6 +276,8 @@ function init() {
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   renderer.toneMapping = THREE.NoToneMapping; // Better for cel shading
   renderer.toneMappingExposure = 1.0;
+  renderer.xr.enabled = true;
+  renderer.xr.setReferenceSpaceType('local-floor');
   document.getElementById('game-container').appendChild(renderer.domElement);
 
   // Setup lights - much brighter
@@ -339,6 +354,9 @@ function init() {
   // Restart game on button click
   document.getElementById('restart-button').addEventListener('click', restartGame);
 
+  // VR: show Enter VR button if supported, wire session and controllers
+  initVR();
+
   // Audio: theme song, mute, volume (listener already attached at load so first click starts theme)
   initAudioControls();
   startThemeSong(); // may be blocked until user interacts
@@ -390,6 +408,50 @@ function initAudioControls() {
     });
   }
 
+  const fullscreenBtn = document.getElementById('fullscreen-btn');
+  function updateFullscreenVRButtonLabel() {
+    if (!fullscreenBtn) return;
+    if (isVRActive) {
+      fullscreenBtn.textContent = '✕';
+      fullscreenBtn.title = 'Exit VR';
+    } else if (document.fullscreenElement) {
+      fullscreenBtn.textContent = '✕';
+      fullscreenBtn.title = 'Exit full screen';
+    } else {
+      fullscreenBtn.textContent = '⛶';
+      fullscreenBtn.title = vrSupported ? 'Enter VR (360° immersive)' : 'Full screen';
+    }
+  }
+  if (fullscreenBtn) {
+    fullscreenBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      // On VR-capable devices, fullscreen = enter/exit WebXR immersive-vr (360° view)
+      if (isVRActive && vrSession) {
+        vrSession.end();
+        return;
+      }
+      if (vrSupported) {
+        enterVR();
+        return;
+      }
+      if (document.fullscreenElement) {
+        document.exitFullscreen?.();
+      } else {
+        document.documentElement.requestFullscreen?.();
+      }
+    });
+    document.addEventListener('fullscreenchange', () => {
+      updateFullscreenVRButtonLabel();
+      // Re-enter fullscreen if the browser exited it when we released pointer lock on pause
+      if (!document.fullscreenElement && gamePaused && reenterFullscreenWhenPaused) {
+        reenterFullscreenWhenPaused = false;
+        document.documentElement.requestFullscreen?.();
+      }
+    });
+    // Expose so enterVR / onVRSessionEnd can update the button when VR state changes
+    window.__updateFullscreenVRButtonLabel = updateFullscreenVRButtonLabel;
+  }
+
   document.addEventListener('keydown', (e) => {
     if (e.key !== 'm' && e.key !== 'M') return;
     if (e.target.closest('input, textarea, select')) return;
@@ -397,6 +459,169 @@ function initAudioControls() {
     setSoundState(!state.muted, state.volume);
     applySoundSettings();
   });
+}
+
+function initVR() {
+  const vrHintEl = document.getElementById('vr-hint');
+  const enterVrBtn = document.getElementById('enter-vr-btn');
+
+  function setVRUnavailable(reason) {
+    if (vrHintEl) {
+      vrHintEl.textContent = reason;
+      vrHintEl.classList.remove('hidden');
+    }
+    console.warn('WebXR VR not available:', reason);
+  }
+
+  if (!window.isSecureContext) {
+    setVRUnavailable('VR requires HTTPS or localhost. Open this page via https:// or http://localhost');
+    return;
+  }
+  if (!navigator.xr) {
+    setVRUnavailable('VR not supported in this browser. Try Chrome with a VR headset.');
+    return;
+  }
+
+  navigator.xr.isSessionSupported('immersive-vr').then((supported) => {
+    if (!supported) {
+      setVRUnavailable('No VR display detected. Use HTTPS, connect a headset, or try the browser\'s Enter VR button.');
+      return;
+    }
+    vrSupported = true;
+    if (vrHintEl) vrHintEl.classList.add('hidden');
+    if (enterVrBtn) {
+      enterVrBtn.classList.remove('hidden');
+      enterVrBtn.addEventListener('click', (e) => { e.stopPropagation(); enterVR(); });
+    }
+    window.addEventListener('vrdisplayactivate', onBrowserEnterVR);
+    if (typeof window.__updateFullscreenVRButtonLabel === 'function') window.__updateFullscreenVRButtonLabel();
+  }).catch((err) => {
+    setVRUnavailable('VR check failed. Use HTTPS or localhost.');
+    console.warn('WebXR isSessionSupported failed:', err);
+  });
+}
+
+function onBrowserEnterVR() {
+  if (vrSupported && !vrSession) enterVR();
+}
+
+async function enterVR() {
+  if (!navigator.xr || vrSession) return;
+  try {
+    vrSession = await navigator.xr.requestSession('immersive-vr', {
+      optionalFeatures: ['local-floor'],
+    });
+    isVRActive = true;
+    await renderer.xr.setSession(vrSession);
+    xrReferenceSpace = renderer.xr.getReferenceSpace?.() || await vrSession.requestReferenceSpace('local-floor');
+    createVRReticle();
+    const crosshairEl = document.getElementById('crosshair');
+    if (crosshairEl) crosshairEl.style.visibility = 'hidden';
+    document.getElementById('instructions').classList.add('hidden');
+    if (!gameStarted) startGame();
+    if (nonVRLoopId != null) cancelAnimationFrame(nonVRLoopId);
+    nonVRLoopId = null;
+    renderer.setAnimationLoop(animate);
+    vrSession.addEventListener('end', onVRSessionEnd);
+    vrSession.addEventListener('selectstart', onVRSelectStart);
+    vrSession.addEventListener('selectend', onVRSelectEnd);
+    if (typeof window.__updateFullscreenVRButtonLabel === 'function') window.__updateFullscreenVRButtonLabel();
+  } catch (err) {
+    console.warn('VR session failed:', err);
+    isVRActive = false;
+    vrSession = null;
+    xrReferenceSpace = null;
+    const vrHintEl = document.getElementById('vr-hint');
+    if (vrHintEl) {
+      vrHintEl.textContent = 'Could not enter VR: ' + (err.message || 'user denied or device unavailable');
+      vrHintEl.classList.remove('hidden');
+    }
+  }
+}
+
+function createVRReticle() {
+  if (vrReticle) return;
+  const size = 0.08;
+  const mat = new THREE.MeshBasicMaterial({ color: 0x00ff00, depthTest: false });
+  const g1 = new THREE.PlaneGeometry(size, size * 0.2);
+  const g2 = new THREE.PlaneGeometry(size * 0.2, size);
+  const cross1 = new THREE.Mesh(g1, mat);
+  const cross2 = new THREE.Mesh(g2, mat);
+  cross1.rotation.y = Math.PI / 2;
+  cross2.rotation.y = Math.PI / 2;
+  vrReticle = new THREE.Group();
+  vrReticle.add(cross1);
+  vrReticle.add(cross2);
+  vrReticle.visible = false;
+  scene.add(vrReticle);
+}
+
+function onVRSessionEnd() {
+  if (vrSession) {
+    vrSession.removeEventListener('end', onVRSessionEnd);
+    vrSession.removeEventListener('selectstart', onVRSelectStart);
+    vrSession.removeEventListener('selectend', onVRSelectEnd);
+  }
+  vrSession = null;
+  xrReferenceSpace = null;
+  isVRActive = false;
+  vrTriggerPressedLastFrame = false;
+  if (vrReticle && scene) scene.remove(vrReticle);
+  vrReticle = null;
+  const crosshairEl = document.getElementById('crosshair');
+  if (crosshairEl) crosshairEl.style.visibility = '';
+  renderer.setAnimationLoop(null);
+  animate();
+  if (typeof window.__updateFullscreenVRButtonLabel === 'function') window.__updateFullscreenVRButtonLabel();
+}
+
+let vrTriggerDown = false;
+
+function onVRSelectStart() {
+  vrTriggerDown = true;
+  if (!gameStarted) {
+    startGame();
+  } else if (!gamePaused && (document.pointerLockElement === renderer.domElement || isVRActive)) {
+    shootProjectile();
+  }
+}
+
+function onVRSelectEnd() {
+  vrTriggerDown = false;
+}
+
+function updateVRFromFrame(xrFrame) {
+  if (!xrReferenceSpace || !xrFrame) return;
+
+  const viewerPose = xrFrame.getViewerPose(xrReferenceSpace);
+  if (viewerPose && viewerPose.transform) {
+    const t = viewerPose.transform;
+    camera.position.set(t.position.x, t.position.y, t.position.z);
+    camera.quaternion.set(t.orientation.x, t.orientation.y, t.orientation.z, t.orientation.w);
+  }
+
+  const rightInput = vrSession?.inputSources?.find((s) => s.handedness === 'right');
+  if (rightInput?.targetRaySpace) {
+    const pose = xrFrame.getPose(rightInput.targetRaySpace, xrReferenceSpace);
+    if (pose?.transform) {
+      const t = pose.transform;
+      vrControllerPosition.set(t.position.x, t.position.y, t.position.z);
+      vrControllerQuaternion.set(t.orientation.x, t.orientation.y, t.orientation.z, t.orientation.w);
+      vrControllerDirection.set(0, 0, -1).applyQuaternion(vrControllerQuaternion);
+      if (vrReticle) {
+        vrReticle.visible = true;
+        vrReticle.position.copy(vrControllerPosition).add(vrControllerDirection.clone().multiplyScalar(0.5));
+        vrReticle.quaternion.copy(vrControllerQuaternion);
+        vrReticle.lookAt(camera.position);
+      }
+    }
+  }
+
+  const triggerPressed = rightInput?.gamepad?.buttons?.[0]?.pressed || rightInput?.gamepad?.buttons?.[1]?.pressed;
+  if (triggerPressed && !vrTriggerPressedLastFrame && gameStarted && !gamePaused) {
+    shootProjectile();
+  }
+  vrTriggerPressedLastFrame = !!triggerPressed;
 }
 
 function setupPhysicsWorld() {
@@ -906,7 +1131,8 @@ function createExplosion(position) {
 const swingSoundUrl = soundBase + 'sounds/swing.wav';
 
 function shootProjectile() {
-  if (!gameStarted || document.pointerLockElement !== renderer.domElement) return;
+  if (!gameStarted) return;
+  if (document.pointerLockElement !== renderer.domElement && !isVRActive) return;
   
   const { muted, volume } = getSoundState();
   if (muted) { /* skip swing when muted */ } else {
@@ -921,11 +1147,18 @@ function shootProjectile() {
   shots++;
   updateStats();
   
-  createProjectileEntity(world, scene, physicsWorld, AmmoLib, camera);
+  if (isVRActive) {
+    const origin = vrControllerPosition.clone();
+    const dir = vrControllerDirection.clone();
+    createProjectileEntity(world, scene, physicsWorld, AmmoLib, camera, origin, dir);
+  } else {
+    createProjectileEntity(world, scene, physicsWorld, AmmoLib, camera);
+  }
 }
 
 function setupControls() {
   document.addEventListener('mousemove', (event) => {
+    if (isVRActive) return;
     if (!gameStarted || document.pointerLockElement !== renderer.domElement) return;
 
     const movementX = event.movementX || 0;
@@ -945,7 +1178,9 @@ function setupControls() {
     if (event.target.closest('#audio-controls')) return;
     if (event.target.closest('#pause-menu')) return;
     if (gameStarted) {
-      if (document.pointerLockElement !== renderer.domElement) {
+      if (isVRActive) {
+        shootProjectile();
+      } else if (document.pointerLockElement !== renderer.domElement) {
         renderer.domElement.requestPointerLock();
       } else {
         shootProjectile();
@@ -961,11 +1196,16 @@ function setupControls() {
     if (gamePaused) {
       hidePauseMenu();
       gamePaused = false;
+      reenterFullscreenWhenPaused = false;
       renderer.domElement.requestPointerLock();
     } else {
       gamePaused = true;
+      const wasFullscreen = !!document.fullscreenElement;
+      reenterFullscreenWhenPaused = wasFullscreen;
       if (document.pointerLockElement) document.exitPointerLock();
       showPauseMenu();
+      // Re-enter fullscreen in same user gesture if browser already exited (some do so when releasing pointer lock)
+      if (wasFullscreen && !document.fullscreenElement) document.documentElement.requestFullscreen?.();
     }
   });
 
@@ -974,6 +1214,7 @@ function setupControls() {
     pauseResumeBtn.addEventListener('click', () => {
       hidePauseMenu();
       gamePaused = false;
+      reenterFullscreenWhenPaused = false;
       renderer.domElement.requestPointerLock();
     });
   }
@@ -1028,7 +1269,7 @@ function startGame() {
     createCapsuleTargetEntity(world, scene, camera);
   }
   
-  renderer.domElement.requestPointerLock();
+  if (!isVRActive) renderer.domElement.requestPointerLock();
 }
 
 function onTimeUp() {
@@ -1154,6 +1395,7 @@ document.addEventListener('pointerlockchange', () => {
       const state = gameStateEntity.getComponent(GameStateComponent);
       if (state && state.state !== 'gameover') {
         gamePaused = true;
+        reenterFullscreenWhenPaused = !!document.fullscreenElement;
         showPauseMenu();
       }
     }
@@ -1179,10 +1421,12 @@ function updateMovement(delta) {
   return;
 }
 
-function animate() {
-  requestAnimationFrame(animate);
-
+function animate(time, xrFrame) {
   const delta = clock.getDelta();
+
+  if (xrFrame && isVRActive) {
+    updateVRFromFrame(xrFrame);
+  }
 
   // Update ECS systems
   if (world) {
@@ -1196,6 +1440,10 @@ function animate() {
   updateMovement(delta);
 
   renderer.render(scene, camera);
+
+  if (!renderer.xr.isPresenting) {
+    nonVRLoopId = requestAnimationFrame(animate);
+  }
 }
 
 function onWindowResize() {
