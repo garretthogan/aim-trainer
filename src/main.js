@@ -59,6 +59,11 @@ let gameInitialized = false
 let settingsPageInitialized = false
 let previousRouteWasSettings = false
 
+// Sound: init theme song early so route() and tryStartThemeOnLoad() can use it (avoid TDZ)
+const soundBase = (import.meta.env.BASE_URL || '/').replace(/\/?$/, '/');
+const themeSongUrl = soundBase + 'sounds/themesong.wav';
+let themeSong = new Audio(themeSongUrl);
+
 function getIsSettingsRoute() {
   const path = base ? window.location.pathname.replace(new RegExp(`^${base.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`), '') || '/' : window.location.pathname
   const normalized = path.replace(/\/$/, '') || '/'
@@ -71,6 +76,7 @@ function route() {
   const settingsPage = document.getElementById('settings-page')
   if (isSettings) {
     previousRouteWasSettings = true
+    stopThemeSong()
     if (gameContainer) gameContainer.classList.add('hidden')
     if (settingsPage) settingsPage.classList.remove('hidden')
     if (!settingsPageInitialized) {
@@ -85,6 +91,7 @@ function route() {
       runGame()
     } else if (previousRouteWasSettings) {
       resetStage()
+      startThemeSong()
     }
     previousRouteWasSettings = false
   }
@@ -140,16 +147,8 @@ function initSettingsPage() {
     if (r) r.value = config.radius
     if (h) h.value = config.height
     if (s) s.value = config.movementSpeed
-    const t = document.getElementById('game-timer')
-    const minT = document.getElementById('game-min-targets')
-    const maxT = document.getElementById('game-max-targets')
-    const minC = document.getElementById('game-min-capsules')
-    const maxC = document.getElementById('game-max-capsules')
-    if (t) t.value = game.timerDuration
-    if (minT) minT.value = game.minTargets
-    if (maxT) maxT.value = game.maxTargets
-    if (minC) minC.value = game.minCapsules
-    if (maxC) maxC.value = game.maxCapsules
+    const difficultyEl = document.getElementById('game-difficulty')
+    if (difficultyEl) difficultyEl.value = game.difficulty
   }
 
   loadForm()
@@ -162,13 +161,7 @@ function initSettingsPage() {
         height: form.height?.value,
         movementSpeed: form.movementSpeed?.value,
       })
-      setGameSettings({
-        timerDuration: form.timerDuration?.value,
-        minTargets: form.minTargets?.value,
-        maxTargets: form.maxTargets?.value,
-        minCapsules: form.minCapsules?.value,
-        maxCapsules: form.maxCapsules?.value,
-      })
+      setGameSettings({ difficulty: form.difficulty?.value })
       showMessage('Settings saved.')
       loadForm()
     })
@@ -318,6 +311,57 @@ function init() {
   
   // Restart game on button click
   document.getElementById('restart-button').addEventListener('click', restartGame);
+
+  // Audio: theme song, mute, volume (listener already attached at load so first click starts theme)
+  initAudioControls();
+  startThemeSong(); // may be blocked until user interacts
+}
+
+function onFirstUserGestureStartTheme() {
+  const start = () => {
+    if (getIsSettingsRoute()) return;
+    startThemeSong();
+    resumeAudioContext();
+    document.removeEventListener('click', start);
+    document.removeEventListener('keydown', start);
+    document.removeEventListener('touchstart', start);
+  };
+  document.addEventListener('click', start, { once: true, capture: true });
+  document.addEventListener('keydown', start, { once: true, capture: true });
+  document.addEventListener('touchstart', start, { once: true, capture: true });
+}
+
+function initAudioControls() {
+  if (!themeSong) themeSong = new Audio(themeSongUrl);
+  applySoundSettings();
+
+  const audioControls = document.getElementById('audio-controls');
+  if (audioControls) {
+    audioControls.addEventListener('mousedown', () => {
+      if (document.pointerLockElement) document.exitPointerLock();
+    });
+  }
+
+  const muteBtn = document.getElementById('sound-mute');
+  if (muteBtn) {
+    muteBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const state = getSoundState();
+      const nextMuted = !state.muted;
+      setSoundState(nextMuted, state.volume);
+      applySoundSettings();
+    });
+  }
+
+  const volSlider = document.getElementById('sound-volume');
+  if (volSlider) {
+    volSlider.addEventListener('input', () => {
+      const v = Math.max(0, Math.min(1, parseInt(volSlider.value, 10) / 100));
+      const state = getSoundState();
+      setSoundState(state.muted, v);
+      applySoundSettings();
+    });
+  }
 }
 
 function setupPhysicsWorld() {
@@ -462,14 +506,86 @@ function createWalls() {
   });
 }
 
-const soundBase = (import.meta.env.BASE_URL || '/').replace(/\/?$/, '/');
 const impactSoundUrl = soundBase + 'sounds/impact.wav';
 
+const SOUND_MUTED_KEY = 'aim-trainer-sound-muted';
+const SOUND_VOLUME_KEY = 'aim-trainer-sound-volume';
+/** Music level relative to SFX; keep music well under impact */
+const MUSIC_VOLUME_RATIO = 0.14;
+
 let audioContext = null;
+let masterGainNode = null;
 let impactSoundBuffer = null;
 let impactSoundLoadPromise = null;
 const _listenerForward = new THREE.Vector3();
 const _listenerUp = new THREE.Vector3(0, 1, 0);
+
+function getSoundState() {
+  try {
+    const muted = localStorage.getItem(SOUND_MUTED_KEY);
+    const volume = localStorage.getItem(SOUND_VOLUME_KEY);
+    return {
+      muted: muted === 'true',
+      volume: volume != null ? Math.max(0, Math.min(1, parseFloat(volume))) : 1,
+    };
+  } catch {
+    return { muted: false, volume: 1 };
+  }
+}
+
+function setSoundState(muted, volume) {
+  try {
+    localStorage.setItem(SOUND_MUTED_KEY, String(muted));
+    localStorage.setItem(SOUND_VOLUME_KEY, String(volume));
+  } catch (_) {}
+}
+
+function applySoundSettings() {
+  const { muted, volume } = getSoundState();
+  const effectiveVolume = muted ? 0 : volume;
+  if (masterGainNode && audioContext) {
+    masterGainNode.gain.setValueAtTime(effectiveVolume, audioContext.currentTime);
+  }
+  if (themeSong) {
+    themeSong.muted = muted;
+    themeSong.volume = volume * MUSIC_VOLUME_RATIO;
+    if (!muted) {
+      themeSong.loop = true;
+      themeSong.play().catch(() => {});
+    } else {
+      themeSong.pause();
+    }
+  }
+  const muteBtn = document.getElementById('sound-mute');
+  if (muteBtn) muteBtn.textContent = muted ? '🔇' : '🔊';
+  const volSlider = document.getElementById('sound-volume');
+  if (volSlider) volSlider.value = Math.round(volume * 100);
+  return { muted, volume };
+}
+
+function startThemeSong() {
+  if (!themeSong) return;
+  const { muted } = getSoundState();
+  if (muted) return;
+  themeSong.loop = true;
+  themeSong.volume = getSoundState().volume * MUSIC_VOLUME_RATIO;
+  themeSong.play().catch(() => {});
+}
+
+function stopThemeSong() {
+  if (themeSong) themeSong.pause();
+}
+
+/** Try to start theme on load when unmuted; may be blocked by browser autoplay policy. */
+function tryStartThemeOnLoad() {
+  if (getIsSettingsRoute()) return;
+  const { muted } = getSoundState();
+  if (muted) return;
+  if (!themeSong) return;
+  themeSong.loop = true;
+  themeSong.volume = getSoundState().volume * MUSIC_VOLUME_RATIO;
+  themeSong.play().catch(() => {});
+}
 
 function resumeAudioContext() {
   if (audioContext && audioContext.state === 'suspended') {
@@ -483,6 +599,12 @@ function ensureImpactSoundReady() {
   impactSoundLoadPromise = (async () => {
     try {
       audioContext = audioContext || new (window.AudioContext || window.webkitAudioContext)();
+      if (!masterGainNode) {
+        masterGainNode = audioContext.createGain();
+        masterGainNode.connect(audioContext.destination);
+        const { muted, volume } = getSoundState();
+        masterGainNode.gain.setValueAtTime(muted ? 0 : volume, audioContext.currentTime);
+      }
       const res = await fetch(impactSoundUrl);
       const arrayBuffer = await res.arrayBuffer();
       impactSoundBuffer = await audioContext.decodeAudioData(arrayBuffer);
@@ -526,10 +648,10 @@ function playSpatialImpact(worldPosition) {
     panner.positionZ.setValueAtTime(worldPosition.z, audioContext.currentTime);
   }
   const gain = audioContext.createGain();
-  gain.gain.setValueAtTime(0.5, audioContext.currentTime);
+  gain.gain.setValueAtTime(1.4, audioContext.currentTime);
   source.connect(panner);
   panner.connect(gain);
-  gain.connect(audioContext.destination);
+  gain.connect(masterGainNode || audioContext.destination);
   source.start(0);
 }
 
@@ -751,12 +873,15 @@ const swingSoundUrl = soundBase + 'sounds/swing.wav';
 function shootProjectile() {
   if (!gameStarted || document.pointerLockElement !== renderer.domElement) return;
   
-  resumeAudioContext();
-  try {
-    const swing = new Audio(swingSoundUrl);
-    swing.volume = 0.5;
-    swing.play().catch(() => {});
-  } catch (_) {}
+  const { muted, volume } = getSoundState();
+  if (muted) { /* skip swing when muted */ } else {
+    resumeAudioContext();
+    try {
+      const swing = new Audio(swingSoundUrl);
+      swing.volume = volume * 0.5;
+      swing.play().catch(() => {});
+    } catch (_) {}
+  }
   
   shots++;
   updateStats();
@@ -779,6 +904,7 @@ function setupControls() {
   });
 
   document.addEventListener('click', (event) => {
+    if (event.target.closest('#audio-controls')) return;
     if (gameStarted) {
       if (document.pointerLockElement !== renderer.domElement) {
         renderer.domElement.requestPointerLock();
@@ -993,3 +1119,7 @@ function onWindowResize() {
   camera.updateProjectionMatrix();
   renderer.setSize(window.innerWidth, window.innerHeight);
 }
+
+// Run after all sound vars/functions are defined (avoid TDZ)
+tryStartThemeOnLoad();
+onFirstUserGestureStartTheme();

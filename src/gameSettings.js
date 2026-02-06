@@ -1,45 +1,52 @@
 const STORAGE_KEY = 'aim-trainer-game-settings';
 
-const DEFAULTS = {
-  minCapsules: 1,
-  maxCapsules: 3,
-  minTargets: 3,
-  maxTargets: 8,
-  timerDuration: 60,
+/** Difficulty presets: targets, capsules, and timer duration. */
+export const DIFFICULTIES = {
+  easy:   { minTargets: 1, maxTargets: 3, minCapsules: 1, maxCapsules: 3, timerDuration: 60 },
+  medium: { minTargets: 2, maxTargets: 6, minCapsules: 2, maxCapsules: 6, timerDuration: 45 },
+  hard:   { minTargets: 4, maxTargets: 12, minCapsules: 4, maxCapsules: 12, timerDuration: 30 },
 };
 
-function parsedInt(value, defaultVal) {
-  const n = parseInt(value, 10);
-  return Number.isNaN(n) ? defaultVal : n;
+const DEFAULT_DIFFICULTY = 'medium';
+
+const DEFAULTS = {
+  difficulty: DEFAULT_DIFFICULTY,
+};
+
+function isValidDifficulty(value) {
+  return value === 'easy' || value === 'medium' || value === 'hard';
 }
 
 export function getGameSettings() {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return { ...DEFAULTS };
+    if (!raw) return getSettingsFromDifficulty(DEFAULTS.difficulty);
     const parsed = JSON.parse(raw);
-    return {
-      minCapsules: Math.max(0, parsedInt(parsed.minCapsules, DEFAULTS.minCapsules)),
-      maxCapsules: Math.max(0, parsedInt(parsed.maxCapsules, DEFAULTS.maxCapsules)),
-      minTargets: Math.max(0, parsedInt(parsed.minTargets, DEFAULTS.minTargets)),
-      maxTargets: Math.max(0, parsedInt(parsed.maxTargets, DEFAULTS.maxTargets)),
-      timerDuration: Math.max(5, parsedInt(parsed.timerDuration, DEFAULTS.timerDuration)),
-    };
+    const difficulty = isValidDifficulty(parsed.difficulty) ? parsed.difficulty : DEFAULTS.difficulty;
+    return getSettingsFromDifficulty(difficulty);
   } catch {
-    return { ...DEFAULTS };
+    return getSettingsFromDifficulty(DEFAULTS.difficulty);
   }
 }
 
-export function setGameSettings(settings) {
-  const safe = {
-    minCapsules: Math.max(0, parsedInt(settings.minCapsules, DEFAULTS.minCapsules)),
-    maxCapsules: Math.max(0, parsedInt(settings.maxCapsules, DEFAULTS.maxCapsules)),
-    minTargets: Math.max(0, parsedInt(settings.minTargets, DEFAULTS.minTargets)),
-    maxTargets: Math.max(0, parsedInt(settings.maxTargets, DEFAULTS.maxTargets)),
-    timerDuration: Math.max(5, parsedInt(settings.timerDuration, DEFAULTS.timerDuration)),
+/** Returns full settings object with derived min/max and timer from the given difficulty. */
+function getSettingsFromDifficulty(difficulty) {
+  const d = DIFFICULTIES[difficulty];
+  return {
+    difficulty,
+    timerDuration: d.timerDuration,
+    minTargets: d.minTargets,
+    maxTargets: d.maxTargets,
+    minCapsules: d.minCapsules,
+    maxCapsules: d.maxCapsules,
   };
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(safe));
-  return safe;
+}
+
+export function setGameSettings(settings) {
+  const difficulty = isValidDifficulty(settings.difficulty) ? settings.difficulty : DEFAULTS.difficulty;
+  const stored = { difficulty };
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(stored));
+  return getSettingsFromDifficulty(difficulty);
 }
 
 export { DEFAULTS };
