@@ -245,12 +245,14 @@ export class TargetBoundsSystem extends System {
 }
 
 export class TimerSystem extends System {
-  constructor(onTimeUp) {
+  constructor(onTimeUp, getIsPaused = () => false) {
     super();
     this.onTimeUp = onTimeUp;
+    this.getIsPaused = getIsPaused;
   }
 
   update(deltaTime) {
+    if (this.getIsPaused && this.getIsPaused()) return;
     const timers = this.world.getEntitiesWith(GameTimerComponent);
 
     timers.forEach(entity => {

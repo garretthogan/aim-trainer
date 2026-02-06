@@ -48,6 +48,9 @@ let score = 0;
 let hits = 0;
 let shots = 0;
 let gameStarted = false;
+let gamePaused = false;
+let gamePausedWhenLeftForSettings = false;
+let hadPointerLock = false;
 
 // Clock
 const clock = new THREE.Clock();
@@ -76,6 +79,7 @@ function route() {
   const settingsPage = document.getElementById('settings-page')
   if (isSettings) {
     previousRouteWasSettings = true
+    if (gamePaused) gamePausedWhenLeftForSettings = true
     stopThemeSong()
     if (gameContainer) gameContainer.classList.add('hidden')
     if (settingsPage) settingsPage.classList.remove('hidden')
@@ -90,8 +94,14 @@ function route() {
       gameInitialized = true
       runGame()
     } else if (previousRouteWasSettings) {
-      resetStage()
-      startThemeSong()
+      if (gamePausedWhenLeftForSettings) {
+        gamePausedWhenLeftForSettings = false
+        showPauseMenu()
+        startThemeSong()
+      } else {
+        resetStage()
+        startThemeSong()
+      }
     }
     previousRouteWasSettings = false
   }
@@ -291,12 +301,12 @@ function init() {
 
   // Add systems
   world.addSystem(new PhysicsSystem(physicsWorld, tmpTrans));
-  world.addSystem(new CapsuleMovementSystem(camera, () => gameStarted));
+  world.addSystem(new CapsuleMovementSystem(camera, () => gameStarted && !gamePaused));
   world.addSystem(new TargetRotationSystem(camera));
   world.addSystem(new CollisionSystem(scene, physicsWorld, AmmoLib, camera, onTargetHit));
   world.addSystem(new ProjectileCleanupSystem(scene, physicsWorld));
   world.addSystem(new TargetBoundsSystem(AmmoLib));
-  world.addSystem(new TimerSystem(onTimeUp));
+  world.addSystem(new TimerSystem(onTimeUp, () => gamePaused));
 
   // Create game entities
   playerEntity = createPlayerEntity(world, camera);
@@ -379,6 +389,14 @@ function initAudioControls() {
       applySoundSettings();
     });
   }
+
+  document.addEventListener('keydown', (e) => {
+    if (e.key !== 'm' && e.key !== 'M') return;
+    if (e.target.closest('input, textarea, select')) return;
+    const state = getSoundState();
+    setSoundState(!state.muted, state.volume);
+    applySoundSettings();
+  });
 }
 
 function setupPhysicsWorld() {
@@ -923,7 +941,9 @@ function setupControls() {
   });
 
   document.addEventListener('click', (event) => {
+    if (event.target.closest('#settings-page')) return;
     if (event.target.closest('#audio-controls')) return;
+    if (event.target.closest('#pause-menu')) return;
     if (gameStarted) {
       if (document.pointerLockElement !== renderer.domElement) {
         renderer.domElement.requestPointerLock();
@@ -932,6 +952,41 @@ function setupControls() {
       }
     }
   });
+
+  document.addEventListener('keydown', (event) => {
+    if (event.key !== 'Escape') return;
+    if (!gameStarted) return;
+    const gameState = gameStateEntity.getComponent(GameStateComponent);
+    if (gameState.state === 'gameover') return;
+    if (gamePaused) {
+      hidePauseMenu();
+      gamePaused = false;
+      renderer.domElement.requestPointerLock();
+    } else {
+      gamePaused = true;
+      if (document.pointerLockElement) document.exitPointerLock();
+      showPauseMenu();
+    }
+  });
+
+  const pauseResumeBtn = document.getElementById('pause-resume');
+  if (pauseResumeBtn) {
+    pauseResumeBtn.addEventListener('click', () => {
+      hidePauseMenu();
+      gamePaused = false;
+      renderer.domElement.requestPointerLock();
+    });
+  }
+}
+
+function showPauseMenu() {
+  const el = document.getElementById('pause-menu');
+  if (el) el.classList.remove('hidden');
+}
+
+function hidePauseMenu() {
+  const el = document.getElementById('pause-menu');
+  if (el) el.classList.add('hidden');
 }
 
 /** Returns a random count in [min, max] from settings (0 when both are 0). */
@@ -944,6 +999,7 @@ function initialCountFromSettings(min, max) {
 
 function startGame() {
   gameStarted = true;
+  gamePaused = false;
   document.getElementById('instructions').classList.add('hidden');
   
   const game = getGameSettings();
@@ -1090,9 +1146,18 @@ function resetStage() {
 
 document.addEventListener('pointerlockchange', () => {
   if (document.pointerLockElement === renderer.domElement) {
+    hadPointerLock = true;
     document.getElementById('game-container').classList.add('playing');
   } else {
     document.getElementById('game-container').classList.remove('playing');
+    if (hadPointerLock && gameStarted && !gamePaused && gameStateEntity) {
+      const state = gameStateEntity.getComponent(GameStateComponent);
+      if (state && state.state !== 'gameover') {
+        gamePaused = true;
+        showPauseMenu();
+      }
+    }
+    hadPointerLock = false;
   }
 });
 

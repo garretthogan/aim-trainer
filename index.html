@@ -2,7 +2,7 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <link rel="icon" type="image/svg+xml" href="bullseye.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Aim Trainer 3D</title>
   </head>
@@ -69,6 +69,13 @@
           <p>You have <span id="instructions-timer">60</span> seconds to score as many points as possible!</p>
           <p>Click to start!</p>
           <p><a href="./settings" class="settings-link">Settings</a></p>
+        </div>
+        <div id="pause-menu" class="hidden">
+          <div class="modal-content">
+            <h2>Paused</h2>
+            <p><button type="button" id="pause-resume">Resume</button></p>
+            <p><a href="./settings" class="settings-link">Settings</a></p>
+          </div>
         </div>
         <div id="gameover-modal" class="hidden">
           <div class="modal-content">
