@@ -1477,6 +1477,8 @@ function animate(time, xrFrame) {
 
   if (xrFrame && isVRActive) {
     updateVRFromFrame(xrFrame);
+    // Three.js skips scene background in XR; force clear to scene background so we don't get black
+    if (scene.background) renderer.setClearColor(scene.background);
   }
 
   // Update ECS systems
@@ -1494,13 +1496,8 @@ function animate(time, xrFrame) {
 
   updateMovement(delta);
 
-  // In VR use the XR camera so the headset shows the correct view (Three.js drives it)
-  if (renderer.xr.isPresenting) {
-    const xrCamera = renderer.xr.getCamera();
-    renderer.render(scene, xrCamera || camera);
-  } else {
-    renderer.render(scene, camera);
-  }
+  // Always pass the scene camera: Three.js updates it for XR (updateCamera) then uses its internal XR camera for stereo
+  renderer.render(scene, camera);
 
   if (!renderer.xr.isPresenting) {
     nonVRLoopId = requestAnimationFrame(animate);
