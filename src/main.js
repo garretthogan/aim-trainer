@@ -1,5 +1,6 @@
 import './style.css'
 import * as THREE from 'three'
+import { VRButton } from 'three/addons/webxr/VRButton.js'
 import { getCapsuleConfig, setCapsuleConfig, DEFAULTS } from './capsuleConfig.js'
 import { getGameSettings, setGameSettings, DEFAULTS as GameDefaults } from './gameSettings.js'
 import { World } from './ecs.js'
@@ -276,27 +277,21 @@ function init() {
   camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
   camera.position.set(0, 5, 10);
 
-  // Setup renderer. Use xrCompatible context when possible so Quest doesn't reconfigure on setSession (can cause black screen).
-  const canvas = document.createElement('canvas');
-  const gl = canvas.getContext('webgl2', {
-    antialias: true,
-    alpha: false,
-    depth: true,
-    xrCompatible: true,
-  });
-  if (gl) {
-    renderer = new THREE.WebGLRenderer({ canvas, context: gl });
-  } else {
-    renderer = new THREE.WebGLRenderer({ antialias: true });
-  }
+  // Setup renderer (same as Three.js VR examples – VRButton will call setSession)
+  renderer = new THREE.WebGLRenderer({ antialias: true });
   renderer.setSize(window.innerWidth, window.innerHeight);
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-  renderer.toneMapping = THREE.NoToneMapping; // Better for cel shading
+  renderer.toneMapping = THREE.NoToneMapping;
   renderer.toneMappingExposure = 1.0;
   renderer.xr.enabled = true;
   renderer.xr.setReferenceSpaceType('local-floor');
   document.getElementById('game-container').appendChild(renderer.domElement);
+  const vrButton = VRButton.createButton(renderer);
+  vrButton.id = 'VRButton';
+  document.getElementById('game-container').appendChild(vrButton);
+  renderer.xr.addEventListener('sessionstart', onVRSessionStart);
+  renderer.xr.addEventListener('sessionend', onVRSessionEnd);
 
   // Setup lights - much brighter
   const ambientLight = new THREE.AmbientLight(0xffffff, 0.8);
@@ -523,50 +518,35 @@ function onBrowserEnterVR() {
   if (vrSupported && !vrSession) enterVR();
 }
 
-async function enterVR() {
-  if (!navigator.xr || vrSession) return;
-  try {
-    vrSession = await navigator.xr.requestSession('immersive-vr', {
-      optionalFeatures: ['local-floor'],
-    });
-    isVRActive = true;
-    // Don't let pointer lock loss (when entering VR) pause the game
-    gamePaused = false;
-    hidePauseMenu();
-    // Reduce GPU load on Quest to avoid freeze/crash: disable shadows in VR
-    renderer.shadowMap.enabled = false;
-    if (mainDirectionalLight) mainDirectionalLight.castShadow = false;
-    scene.traverse((obj) => {
-      if (obj.castShadow !== undefined) obj.castShadow = false;
-      if (obj.receiveShadow !== undefined) obj.receiveShadow = false;
-    });
-    await renderer.xr.setSession(vrSession);
-    xrReferenceSpace = renderer.xr.getReferenceSpace?.() || await vrSession.requestReferenceSpace('local-floor');
-    // Ensure sky background is visible in headset (avoid black clear)
-    if (scene.background) renderer.setClearColor(scene.background);
-    if (groundGridHelper) groundGridHelper.visible = false;
-    createVRReticle();
-    const crosshairEl = document.getElementById('crosshair');
-    if (crosshairEl) crosshairEl.style.visibility = 'hidden';
-    document.getElementById('instructions').classList.add('hidden');
-    // Loop is already setAnimationLoop(animate) from init; no need to set again
-    vrSession.addEventListener('end', onVRSessionEnd);
-    vrSession.addEventListener('selectstart', onVRSelectStart);
-    vrSession.addEventListener('selectend', onVRSelectEnd);
-    if (typeof window.__updateFullscreenVRButtonLabel === 'function') window.__updateFullscreenVRButtonLabel();
-    // Start game so targets exist and trigger can fire (shadows already disabled for Quest)
-    if (!gameStarted) startGame();
-  } catch (err) {
-    console.warn('VR session failed:', err);
-    isVRActive = false;
-    vrSession = null;
-    xrReferenceSpace = null;
-    const vrHintEl = document.getElementById('vr-hint');
-    if (vrHintEl) {
-      vrHintEl.textContent = 'Could not enter VR: ' + (err.message || 'user denied or device unavailable');
-      vrHintEl.classList.remove('hidden');
-    }
-  }
+/** Enter VR by triggering the official VRButton (session created by Three.js so headset receives render). */
+function enterVR() {
+  if (vrSession) return;
+  document.getElementById('VRButton')?.click();
+}
+
+/** Called by renderer.xr when the XR session starts (after VRButton has called setSession). */
+function onVRSessionStart() {
+  vrSession = renderer.xr.getSession();
+  if (!vrSession) return;
+  isVRActive = true;
+  gamePaused = false;
+  hidePauseMenu();
+  renderer.shadowMap.enabled = false;
+  if (mainDirectionalLight) mainDirectionalLight.castShadow = false;
+  scene.traverse((obj) => {
+    if (obj.castShadow !== undefined) obj.castShadow = false;
+    if (obj.receiveShadow !== undefined) obj.receiveShadow = false;
+  });
+  xrReferenceSpace = renderer.xr.getReferenceSpace?.() || null;
+  if (groundGridHelper) groundGridHelper.visible = false;
+  createVRReticle();
+  const crosshairEl = document.getElementById('crosshair');
+  if (crosshairEl) crosshairEl.style.visibility = 'hidden';
+  document.getElementById('instructions').classList.add('hidden');
+  vrSession.addEventListener('selectstart', onVRSelectStart);
+  vrSession.addEventListener('selectend', onVRSelectEnd);
+  if (typeof window.__updateFullscreenVRButtonLabel === 'function') window.__updateFullscreenVRButtonLabel();
+  if (!gameStarted) startGame();
 }
 
 function createVRReticle() {
@@ -588,7 +568,6 @@ function createVRReticle() {
 
 function onVRSessionEnd() {
   if (vrSession) {
-    vrSession.removeEventListener('end', onVRSessionEnd);
     vrSession.removeEventListener('selectstart', onVRSelectStart);
     vrSession.removeEventListener('selectend', onVRSelectEnd);
   }
@@ -1489,9 +1468,7 @@ function animate(time, xrFrame) {
 
   if (xrFrame && isVRActive) {
     updateVRFromFrame(xrFrame);
-    // Three.js skips scene background in XR. Use a strong clear color so we see something in the headset.
-    // If you see green, the XR layer is receiving our draw; we can then debug why the scene doesn't show.
-    renderer.setClearColor(0x00cc00, 1);
+    if (scene.background) renderer.setClearColor(scene.background);
   }
 
   // Update ECS systems
