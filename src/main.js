@@ -66,6 +66,9 @@ let xrReferenceSpace = null;
 const vrControllerPosition = new THREE.Vector3();
 const vrControllerQuaternion = new THREE.Quaternion();
 const vrControllerDirection = new THREE.Vector3(0, 0, -1);
+/** Viewer pose in VR (for game logic only). Three.js XR manager drives the actual camera. */
+const vrViewerPosition = new THREE.Vector3();
+const vrViewerQuaternion = new THREE.Quaternion();
 let vrReticle = null;
 let vrTriggerPressedLastFrame = false;
 
@@ -525,10 +528,6 @@ async function enterVR() {
     });
     await renderer.xr.setSession(vrSession);
     xrReferenceSpace = renderer.xr.getReferenceSpace?.() || await vrSession.requestReferenceSpace('local-floor');
-    // Default standing pose so first frame is valid before viewer pose is available
-    camera.position.set(0, 1.6, 0);
-    camera.quaternion.set(0, 0, 0, 1);
-    camera.lookAt(0, 1.6, -1);
     // Ensure sky background is visible in headset (avoid black clear)
     if (scene.background) renderer.setClearColor(scene.background);
     if (groundGridHelper) groundGridHelper.visible = false;
@@ -543,10 +542,8 @@ async function enterVR() {
     vrSession.addEventListener('selectstart', onVRSelectStart);
     vrSession.addEventListener('selectend', onVRSelectEnd);
     if (typeof window.__updateFullscreenVRButtonLabel === 'function') window.__updateFullscreenVRButtonLabel();
-    // Defer startGame to next frame so we don't spike CPU/memory in the same tick as XR session start (prevents Quest freeze)
-    requestAnimationFrame(() => {
-      if (isVRActive && !gameStarted) startGame();
-    });
+    // Start game so targets exist and trigger can fire (shadows already disabled for Quest)
+    if (!gameStarted) startGame();
   } catch (err) {
     console.warn('VR session failed:', err);
     isVRActive = false;
@@ -627,15 +624,15 @@ function onVRSelectEnd() {
 function updateVRFromFrame(xrFrame) {
   if (!xrReferenceSpace || !xrFrame) return;
 
+  // Don't set camera.position/quaternion here — Three.js WebXR manager updates the camera
+  // for the headset view (cameraAutoUpdate). We only store the viewer pose for game logic.
   const viewerPose = xrFrame.getViewerPose(xrReferenceSpace);
   if (viewerPose && viewerPose.transform) {
     const t = viewerPose.transform;
-    // Clamp Y so we're never inside the ground (Quest floor can report wrong height)
     const y = Math.max(t.position.y, 0.5);
-    camera.position.set(t.position.x, y, t.position.z);
-    camera.quaternion.set(t.orientation.x, t.orientation.y, t.orientation.z, t.orientation.w);
+    vrViewerPosition.set(t.position.x, y, t.position.z);
+    vrViewerQuaternion.set(t.orientation.x, t.orientation.y, t.orientation.z, t.orientation.w);
   }
-  // If no pose (e.g. first frame), keep previous camera so we don't jump to a bad state
 
   const rightInput = vrSession?.inputSources?.find((s) => s.handedness === 'right');
   if (rightInput?.targetRaySpace) {
@@ -649,7 +646,7 @@ function updateVRFromFrame(xrFrame) {
         vrReticle.visible = true;
         vrReticle.position.copy(vrControllerPosition).add(vrControllerDirection.clone().multiplyScalar(0.5));
         vrReticle.quaternion.copy(vrControllerQuaternion);
-        vrReticle.lookAt(camera.position);
+        vrReticle.lookAt(vrViewerPosition);
       }
     }
   }
@@ -918,6 +915,23 @@ function updateSpatialAudioListener(cam) {
     l.positionY.setValueAtTime(cam.position.y, audioContext.currentTime);
     l.positionZ.setValueAtTime(cam.position.z, audioContext.currentTime);
     cam.getWorldDirection(_listenerForward);
+    l.forwardX.setValueAtTime(_listenerForward.x, audioContext.currentTime);
+    l.forwardY.setValueAtTime(_listenerForward.y, audioContext.currentTime);
+    l.forwardZ.setValueAtTime(_listenerForward.z, audioContext.currentTime);
+    l.upX.setValueAtTime(_listenerUp.x, audioContext.currentTime);
+    l.upY.setValueAtTime(_listenerUp.y, audioContext.currentTime);
+    l.upZ.setValueAtTime(_listenerUp.z, audioContext.currentTime);
+  }
+}
+
+function updateSpatialAudioListenerVR(position, quaternion) {
+  if (!audioContext || !impactSoundBuffer) return;
+  const l = audioContext.listener;
+  if (l.positionX) {
+    l.positionX.setValueAtTime(position.x, audioContext.currentTime);
+    l.positionY.setValueAtTime(position.y, audioContext.currentTime);
+    l.positionZ.setValueAtTime(position.z, audioContext.currentTime);
+    _listenerForward.set(0, 0, -1).applyQuaternion(quaternion);
     l.forwardX.setValueAtTime(_listenerForward.x, audioContext.currentTime);
     l.forwardY.setValueAtTime(_listenerForward.y, audioContext.currentTime);
     l.forwardZ.setValueAtTime(_listenerForward.z, audioContext.currentTime);
@@ -1470,13 +1484,23 @@ function animate(time, xrFrame) {
     world.update(delta);
   }
 
-  if (camera && audioContext) {
-    updateSpatialAudioListener(camera);
+  if (audioContext) {
+    if (isVRActive) {
+      updateSpatialAudioListenerVR(vrViewerPosition, vrViewerQuaternion);
+    } else if (camera) {
+      updateSpatialAudioListener(camera);
+    }
   }
 
   updateMovement(delta);
 
-  renderer.render(scene, camera);
+  // In VR use the XR camera so the headset shows the correct view (Three.js drives it)
+  if (renderer.xr.isPresenting) {
+    const xrCamera = renderer.xr.getCamera();
+    renderer.render(scene, xrCamera || camera);
+  } else {
+    renderer.render(scene, camera);
+  }
 
   if (!renderer.xr.isPresenting) {
     nonVRLoopId = requestAnimationFrame(animate);
