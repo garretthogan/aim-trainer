@@ -211,7 +211,7 @@ export function createTargetEntity(world, scene, physicsWorld, AmmoLib, camera, 
   return entity;
 }
 
-export function createProjectileEntity(world, scene, physicsWorld, AmmoLib, camera) {
+export function createProjectileEntity(world, scene, physicsWorld, AmmoLib, camera, vrOrigin = null, vrDirection = null) {
   const projectileSize = 0.15;
   const geometry = new THREE.SphereGeometry(projectileSize, 16, 16);
   
@@ -233,12 +233,16 @@ export function createProjectileEntity(world, scene, physicsWorld, AmmoLib, came
   
   const mesh = new THREE.Mesh(geometry, material);
   
-  // Calculate shooting direction and spawn in front of camera so it doesn't overlap
   const shootDirection = new THREE.Vector3(0, 0, -1);
-  shootDirection.applyQuaternion(camera.quaternion);
-  shootDirection.normalize();
-  const spawnOffset = 0.6;
-  mesh.position.copy(camera.position).add(shootDirection.clone().multiplyScalar(spawnOffset));
+  if (vrOrigin && vrDirection) {
+    shootDirection.copy(vrDirection).normalize();
+    mesh.position.copy(vrOrigin).add(shootDirection.clone().multiplyScalar(0.3));
+  } else {
+    shootDirection.applyQuaternion(camera.quaternion);
+    shootDirection.normalize();
+    const spawnOffset = 0.6;
+    mesh.position.copy(camera.position).add(shootDirection.clone().multiplyScalar(spawnOffset));
+  }
   
   // Add outline for cel-shading effect
   const outlineGeometry = new THREE.SphereGeometry(projectileSize + 0.04, 16, 16);
