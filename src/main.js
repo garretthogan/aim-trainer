@@ -61,7 +61,6 @@ let isVRActive = false;
 let vrSession = null;
 /** Set when WebXR immersive-vr is supported; fullscreen button then enters VR on VR devices. */
 let vrSupported = false;
-let nonVRLoopId = null;
 let xrReferenceSpace = null;
 const vrControllerPosition = new THREE.Vector3();
 const vrControllerQuaternion = new THREE.Quaternion();
@@ -230,7 +229,8 @@ function runGame() {
     AmmoLib = Ammo
     console.log('Ammo.js loaded successfully!')
     init()
-    animate()
+    // Use setAnimationLoop from the start (Three.js VR pattern). Same loop runs in 2D and VR.
+    renderer.setAnimationLoop(animate)
   }).catch(error => {
     console.error('Failed to load Ammo.js:', error)
     document.getElementById('instructions').innerHTML = '<p>Failed to load physics engine</p><p>Please refresh the page</p>'
@@ -519,6 +519,9 @@ async function enterVR() {
       optionalFeatures: ['local-floor'],
     });
     isVRActive = true;
+    // Don't let pointer lock loss (when entering VR) pause the game
+    gamePaused = false;
+    hidePauseMenu();
     // Reduce GPU load on Quest to avoid freeze/crash: disable shadows in VR
     renderer.shadowMap.enabled = false;
     if (mainDirectionalLight) mainDirectionalLight.castShadow = false;
@@ -535,9 +538,7 @@ async function enterVR() {
     const crosshairEl = document.getElementById('crosshair');
     if (crosshairEl) crosshairEl.style.visibility = 'hidden';
     document.getElementById('instructions').classList.add('hidden');
-    if (nonVRLoopId != null) cancelAnimationFrame(nonVRLoopId);
-    nonVRLoopId = null;
-    renderer.setAnimationLoop(animate);
+    // Loop is already setAnimationLoop(animate) from init; no need to set again
     vrSession.addEventListener('end', onVRSessionEnd);
     vrSession.addEventListener('selectstart', onVRSelectStart);
     vrSession.addEventListener('selectend', onVRSelectEnd);
@@ -596,13 +597,12 @@ function onVRSessionEnd() {
   });
   const crosshairEl = document.getElementById('crosshair');
   if (crosshairEl) crosshairEl.style.visibility = '';
-  renderer.setAnimationLoop(null);
+  // Loop stays setAnimationLoop(animate); no need to restart
   // Reset camera so desktop view isn't stuck at VR head pose (on ground, tilted)
   camera.position.set(0, 5, 10);
   camera.lookAt(0, 0, 0);
   camera.updateProjectionMatrix();
   if (scene.background) renderer.setClearColor(scene.background);
-  animate();
   if (typeof window.__updateFullscreenVRButtonLabel === 'function') window.__updateFullscreenVRButtonLabel();
 }
 
@@ -1442,7 +1442,8 @@ document.addEventListener('pointerlockchange', () => {
     document.getElementById('game-container').classList.add('playing');
   } else {
     document.getElementById('game-container').classList.remove('playing');
-    if (hadPointerLock && gameStarted && !gamePaused && gameStateEntity) {
+    // Don't auto-pause when pointer lock is lost due to entering VR
+    if (hadPointerLock && gameStarted && !gamePaused && gameStateEntity && !isVRActive) {
       const state = gameStateEntity.getComponent(GameStateComponent);
       if (state && state.state !== 'gameover') {
         gamePaused = true;
@@ -1498,10 +1499,6 @@ function animate(time, xrFrame) {
 
   // Always pass the scene camera: Three.js updates it for XR (updateCamera) then uses its internal XR camera for stereo
   renderer.render(scene, camera);
-
-  if (!renderer.xr.isPresenting) {
-    nonVRLoopId = requestAnimationFrame(animate);
-  }
 }
 
 function onWindowResize() {
