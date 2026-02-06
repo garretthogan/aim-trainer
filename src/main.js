@@ -295,6 +295,8 @@ function init() {
   gameTimerEntity.addComponent(new GameTimerComponent(initialDuration));
   const timerElInit = document.getElementById('timer');
   if (timerElInit) timerElInit.textContent = initialDuration;
+  const instructionsTimerEl = document.getElementById('instructions-timer');
+  if (instructionsTimerEl) instructionsTimerEl.textContent = initialDuration;
 
   gameStateEntity = world.createEntity();
   gameStateEntity.addComponent(new GameStateComponent());
@@ -882,7 +884,10 @@ function restartGame() {
   
   const gameState = gameStateEntity.getComponent(GameStateComponent);
   gameState.state = 'menu';
-  document.getElementById('instructions').classList.remove('hidden');
+  const instructionsEl = document.getElementById('instructions');
+  if (instructionsEl) instructionsEl.classList.remove('hidden');
+  const instructionsTimerEl = document.getElementById('instructions-timer');
+  if (instructionsTimerEl) instructionsTimerEl.textContent = game.timerDuration;
 }
 
 function clearAllEntities() {
@@ -919,6 +924,15 @@ function resetStage() {
   if (!world || !scene || !physicsWorld || !camera) return
   clearAllEntities()
   const game = getGameSettings()
+  const timer = gameTimerEntity.getComponent(GameTimerComponent)
+  if (timer) {
+    timer.duration = game.timerDuration
+    timer.reset()
+  }
+  const timerEl = document.getElementById('timer')
+  if (timerEl) timerEl.textContent = game.timerDuration
+  const instructionsTimerEl = document.getElementById('instructions-timer')
+  if (instructionsTimerEl) instructionsTimerEl.textContent = game.timerDuration
   const numTargets = initialCountFromSettings(game.minTargets, game.maxTargets)
   const numCapsules = initialCountFromSettings(game.minCapsules, game.maxCapsules)
   for (let i = 0; i < numTargets; i++) {
