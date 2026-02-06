@@ -57,6 +57,7 @@ const clock = new THREE.Clock();
 const base = (import.meta.env.BASE_URL || '/').replace(/\/$/, '') || ''
 let gameInitialized = false
 let settingsPageInitialized = false
+let previousRouteWasSettings = false
 
 function getIsSettingsRoute() {
   const path = base ? window.location.pathname.replace(new RegExp(`^${base.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`), '') || '/' : window.location.pathname
@@ -69,6 +70,7 @@ function route() {
   const gameContainer = document.getElementById('game-container')
   const settingsPage = document.getElementById('settings-page')
   if (isSettings) {
+    previousRouteWasSettings = true
     if (gameContainer) gameContainer.classList.add('hidden')
     if (settingsPage) settingsPage.classList.remove('hidden')
     if (!settingsPageInitialized) {
@@ -81,7 +83,10 @@ function route() {
     if (!gameInitialized) {
       gameInitialized = true
       runGame()
+    } else if (previousRouteWasSettings) {
+      resetStage()
     }
+    previousRouteWasSettings = false
   }
 }
 
@@ -276,7 +281,7 @@ function init() {
 
   // Add systems
   world.addSystem(new PhysicsSystem(physicsWorld, tmpTrans));
-  world.addSystem(new CapsuleMovementSystem(camera));
+  world.addSystem(new CapsuleMovementSystem(camera, () => gameStarted));
   world.addSystem(new TargetRotationSystem(camera));
   world.addSystem(new CollisionSystem(scene, physicsWorld, AmmoLib, camera, onTargetHit));
   world.addSystem(new ProjectileCleanupSystem(scene, physicsWorld));
@@ -455,9 +460,81 @@ function createWalls() {
   });
 }
 
+const impactSoundUrl = (import.meta.env.BASE_URL || '/') + 'sounds/impact.wav';
+
+let audioContext = null;
+let impactSoundBuffer = null;
+let impactSoundLoadPromise = null;
+const _listenerForward = new THREE.Vector3();
+const _listenerUp = new THREE.Vector3(0, 1, 0);
+
+function ensureImpactSoundReady() {
+  if (impactSoundBuffer) return Promise.resolve();
+  if (impactSoundLoadPromise) return impactSoundLoadPromise;
+  impactSoundLoadPromise = (async () => {
+    try {
+      audioContext = audioContext || new (window.AudioContext || window.webkitAudioContext)();
+      const res = await fetch(impactSoundUrl);
+      const arrayBuffer = await res.arrayBuffer();
+      impactSoundBuffer = await audioContext.decodeAudioData(arrayBuffer);
+    } catch (_) {}
+  })();
+  return impactSoundLoadPromise;
+}
+
+function updateSpatialAudioListener(cam) {
+  if (!audioContext || !impactSoundBuffer) return;
+  const l = audioContext.listener;
+  if (l.positionX) {
+    l.positionX.setValueAtTime(cam.position.x, audioContext.currentTime);
+    l.positionY.setValueAtTime(cam.position.y, audioContext.currentTime);
+    l.positionZ.setValueAtTime(cam.position.z, audioContext.currentTime);
+    cam.getWorldDirection(_listenerForward);
+    l.forwardX.setValueAtTime(_listenerForward.x, audioContext.currentTime);
+    l.forwardY.setValueAtTime(_listenerForward.y, audioContext.currentTime);
+    l.forwardZ.setValueAtTime(_listenerForward.z, audioContext.currentTime);
+    l.upX.setValueAtTime(_listenerUp.x, audioContext.currentTime);
+    l.upY.setValueAtTime(_listenerUp.y, audioContext.currentTime);
+    l.upZ.setValueAtTime(_listenerUp.z, audioContext.currentTime);
+  }
+}
+
+function playSpatialImpact(worldPosition) {
+  if (!audioContext || !impactSoundBuffer) return;
+  const source = audioContext.createBufferSource();
+  source.buffer = impactSoundBuffer;
+  const panner = audioContext.createPanner();
+  panner.panningModel = 'HRTF';
+  panner.distanceModel = 'inverse';
+  panner.refDistance = 2;
+  panner.maxDistance = 500;
+  panner.rolloffFactor = 0.4;
+  panner.coneInnerAngle = 360;
+  panner.coneOuterAngle = 360;
+  if (panner.positionX) {
+    panner.positionX.setValueAtTime(worldPosition.x, audioContext.currentTime);
+    panner.positionY.setValueAtTime(worldPosition.y, audioContext.currentTime);
+    panner.positionZ.setValueAtTime(worldPosition.z, audioContext.currentTime);
+  }
+  const gain = audioContext.createGain();
+  gain.gain.setValueAtTime(0.5, audioContext.currentTime);
+  source.connect(panner);
+  panner.connect(gain);
+  gain.connect(audioContext.destination);
+  source.start(0);
+}
+
 function onTargetHit(targetEntity, projectileEntity, normalizedDistance, targetDistance) {
   hits++;
-  
+  const meshComp = targetEntity.getComponent(MeshComponent);
+  const hitPosition = meshComp?.mesh?.position ? meshComp.mesh.position.clone() : null;
+  ensureImpactSoundReady().then(() => {
+    if (hitPosition && impactSoundBuffer) {
+      updateSpatialAudioListener(camera);
+      playSpatialImpact(hitPosition);
+    }
+  });
+
   // Calculate accuracy multiplier (closer to center = higher score)
   const accuracyMultiplier = 1.0 - (normalizedDistance * 0.75);
   
@@ -482,10 +559,9 @@ function onTargetHit(targetEntity, projectileEntity, normalizedDistance, targetD
   updateStats();
   
   // Visual feedback
-  const meshComp = targetEntity.getComponent(MeshComponent);
-  if (meshComp) {
-    showScorePopup(meshComp.mesh.position, earnedScore, normalizedDistance, targetDistance, distanceMultiplier);
-    createExplosion(meshComp.mesh.position);
+  if (hitPosition) {
+    showScorePopup(hitPosition, earnedScore, normalizedDistance, targetDistance, distanceMultiplier);
+    createExplosion(hitPosition);
   }
   
   const game = getGameSettings();
@@ -660,8 +736,16 @@ function createExplosion(position) {
   animateExplosion();
 }
 
+const swingSoundUrl = (import.meta.env.BASE_URL || '/') + 'sounds/swing.wav';
+
 function shootProjectile() {
   if (!gameStarted || document.pointerLockElement !== renderer.domElement) return;
+  
+  try {
+    const swing = new Audio(swingSoundUrl);
+    swing.volume = 0.5;
+    swing.play().catch(() => {});
+  } catch (_) {}
   
   shots++;
   updateStats();
@@ -709,6 +793,8 @@ function startGame() {
 
   const gameState = gameStateEntity.getComponent(GameStateComponent);
   gameState.state = 'playing';
+
+  ensureImpactSoundReady();
 
   const targetLo = Math.min(game.minTargets, game.maxTargets);
   const targetHi = Math.max(game.minTargets, game.maxTargets);
@@ -817,6 +903,24 @@ function clearAllEntities() {
   });
 }
 
+function resetStage() {
+  if (!world || !scene || !physicsWorld || !camera) return
+  clearAllEntities()
+  const game = getGameSettings()
+  const targetLo = Math.min(game.minTargets, game.maxTargets)
+  const targetHi = Math.max(game.minTargets, game.maxTargets)
+  const capsuleLo = Math.min(game.minCapsules, game.maxCapsules)
+  const capsuleHi = Math.max(game.minCapsules, game.maxCapsules)
+  const numTargets = targetLo + Math.floor(Math.random() * (targetHi - targetLo + 1))
+  const numCapsules = capsuleLo + Math.floor(Math.random() * (capsuleHi - capsuleLo + 1))
+  for (let i = 0; i < numTargets; i++) {
+    createTargetEntity(world, scene, physicsWorld, AmmoLib, camera)
+  }
+  for (let i = 0; i < numCapsules; i++) {
+    createCapsuleTargetEntity(world, scene, camera)
+  }
+}
+
 document.addEventListener('pointerlockchange', () => {
   if (document.pointerLockElement === renderer.domElement) {
     document.getElementById('game-container').classList.add('playing');
@@ -851,6 +955,10 @@ function animate() {
   // Update ECS systems
   if (world) {
     world.update(delta);
+  }
+
+  if (camera && audioContext) {
+    updateSpatialAudioListener(camera);
   }
 
   updateMovement(delta);

@@ -65,13 +65,17 @@ export class TargetRotationSystem extends System {
   }
 }
 
+const MIN_CAPSULE_DISTANCE = 10;
+
 export class CapsuleMovementSystem extends System {
-  constructor(camera) {
+  constructor(camera, isActive = () => true) {
     super();
     this.camera = camera;
+    this.isActive = isActive;
   }
 
   update(deltaTime) {
+    if (!this.isActive()) return;
     const dt = Math.min(deltaTime, 0.1);
     const capsules = this.world.getEntitiesWith(
       CapsuleMovementComponent,
@@ -94,9 +98,26 @@ export class CapsuleMovementSystem extends System {
       _toPlayer.normalize();
       const step = movement.approachSpeed * dt;
       const bound = 44;
-      root.position.x = Math.max(-bound, Math.min(bound, pos.x + _toPlayer.x * step));
+      let nx = Math.max(-bound, Math.min(bound, pos.x + _toPlayer.x * step));
+      let nz = Math.max(-bound, Math.min(bound, pos.z + _toPlayer.z * step));
+      for (let pass = 0; pass < 3; pass++) {
+        capsules.forEach(other => {
+          if (other === entity) return;
+          const otherRoot = other.getComponent(MeshComponent).mesh;
+          const ox = otherRoot.position.x, oz = otherRoot.position.z;
+          const dx = nx - ox, dz = nz - oz;
+          const distSq = dx * dx + dz * dz;
+          if (distSq < MIN_CAPSULE_DISTANCE * MIN_CAPSULE_DISTANCE && distSq > 1e-6) {
+            const dist = Math.sqrt(distSq);
+            const push = (MIN_CAPSULE_DISTANCE - dist) / dist;
+            nx += dx * push;
+            nz += dz * push;
+          }
+        });
+      }
+      root.position.x = Math.max(-bound, Math.min(bound, nx));
       root.position.y = movement.groundHeight;
-      root.position.z = Math.max(-bound, Math.min(bound, pos.z + _toPlayer.z * step));
+      root.position.z = Math.max(-bound, Math.min(bound, nz));
     });
   }
 }

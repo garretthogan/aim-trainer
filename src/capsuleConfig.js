@@ -1,9 +1,9 @@
 const STORAGE_KEY = 'aim-trainer-capsule-settings';
 
 const DEFAULTS = {
-  radius: 0.6,
-  height: 3.6,
-  movementSpeed: 22,
+  radius: 0.9,
+  height: 4.5,
+  movementSpeed: 4,
 };
 
 export function getCapsuleConfig() {

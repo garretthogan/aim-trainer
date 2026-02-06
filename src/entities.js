@@ -212,7 +212,7 @@ export function createTargetEntity(world, scene, physicsWorld, AmmoLib, camera, 
 }
 
 export function createProjectileEntity(world, scene, physicsWorld, AmmoLib, camera) {
-  const projectileSize = 0.3;
+  const projectileSize = 0.15;
   const geometry = new THREE.SphereGeometry(projectileSize, 16, 16);
   
   // Create gradient map for cel shading
@@ -232,10 +232,16 @@ export function createProjectileEntity(world, scene, physicsWorld, AmmoLib, came
   });
   
   const mesh = new THREE.Mesh(geometry, material);
-  mesh.position.copy(camera.position);
+  
+  // Calculate shooting direction and spawn in front of camera so it doesn't overlap
+  const shootDirection = new THREE.Vector3(0, 0, -1);
+  shootDirection.applyQuaternion(camera.quaternion);
+  shootDirection.normalize();
+  const spawnOffset = 0.6;
+  mesh.position.copy(camera.position).add(shootDirection.clone().multiplyScalar(spawnOffset));
   
   // Add outline for cel-shading effect
-  const outlineGeometry = new THREE.SphereGeometry(projectileSize + 0.08, 16, 16);
+  const outlineGeometry = new THREE.SphereGeometry(projectileSize + 0.04, 16, 16);
   const outlineMaterial = new THREE.MeshBasicMaterial({
     color: 0x000000,
     side: THREE.BackSide
@@ -250,9 +256,9 @@ export function createProjectileEntity(world, scene, physicsWorld, AmmoLib, came
   const transform = new AmmoLib.btTransform();
   transform.setIdentity();
   transform.setOrigin(new AmmoLib.btVector3(
-    camera.position.x,
-    camera.position.y,
-    camera.position.z
+    mesh.position.x,
+    mesh.position.y,
+    mesh.position.z
   ));
 
   const mass = 0.5;
@@ -262,11 +268,6 @@ export function createProjectileEntity(world, scene, physicsWorld, AmmoLib, came
   const motionState = new AmmoLib.btDefaultMotionState(transform);
   const rbInfo = new AmmoLib.btRigidBodyConstructionInfo(mass, motionState, shape, localInertia);
   const body = new AmmoLib.btRigidBody(rbInfo);
-  
-  // Calculate shooting direction
-  const shootDirection = new THREE.Vector3(0, 0, -1);
-  shootDirection.applyQuaternion(camera.quaternion);
-  shootDirection.normalize();
   
   const shootSpeed = 80;
   const velocity = new AmmoLib.btVector3(
@@ -330,9 +331,9 @@ export function createCapsuleTargetEntity(world, scene, camera) {
   outline.renderOrder = 1;
 
   const groundHeight = length / 2 + radius;
+  const minCapsuleDistance = 10;
   const minDistance = 60;
   const maxDistance = 85;
-  const startDistance = minDistance + Math.random() * (maxDistance - minDistance);
   let dirXZ = new THREE.Vector3(
     (Math.random() - 0.5) * 2,
     0,
@@ -340,15 +341,29 @@ export function createCapsuleTargetEntity(world, scene, camera) {
   );
   if (dirXZ.lengthSq() < 0.01) dirXZ.set(0, 0, -1);
   dirXZ.normalize();
-
+  let px = camera.position.x + dirXZ.x * (minDistance + Math.random() * (maxDistance - minDistance));
+  let pz = camera.position.z + dirXZ.z * (minDistance + Math.random() * (maxDistance - minDistance));
+  const maxTries = 80;
+  for (let tryCount = 0; tryCount < maxTries; tryCount++) {
+    const others = world.getEntitiesWith(CapsuleMovementComponent, MeshComponent, TargetComponent)
+      .filter(e => e.getComponent(TargetComponent).isCapsule);
+    const tooClose = others.some(other => {
+      const m = other.getComponent(MeshComponent).mesh;
+      const dx = px - m.position.x, dz = pz - m.position.z;
+      return (dx * dx + dz * dz) < minCapsuleDistance * minCapsuleDistance;
+    });
+    if (!tooClose) break;
+    const startDistance = minDistance + Math.random() * (maxDistance - minDistance);
+    dirXZ.set((Math.random() - 0.5) * 2, 0, (Math.random() - 0.5) * 2);
+    if (dirXZ.lengthSq() < 0.01) dirXZ.set(0, 0, -1);
+    dirXZ.normalize();
+    px = camera.position.x + dirXZ.x * startDistance;
+    pz = camera.position.z + dirXZ.z * startDistance;
+  }
   const group = new THREE.Group();
   group.add(capsuleMesh);
   group.add(outline);
-  group.position.set(
-    camera.position.x + dirXZ.x * startDistance,
-    groundHeight,
-    camera.position.z + dirXZ.z * startDistance
-  );
+  group.position.set(px, groundHeight, pz);
   capsuleMesh.castShadow = true;
   capsuleMesh.receiveShadow = true;
   scene.add(group);
