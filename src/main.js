@@ -31,6 +31,8 @@ import {
 let scene, camera, renderer;
 /** Main directional light (casts shadows). Toggled off in VR to avoid Quest overload. */
 let mainDirectionalLight = null;
+/** Ground grid (hidden in VR to avoid "white streaks" at floor level). */
+let groundGridHelper = null;
 let physicsWorld;
 let tmpTrans;
 let AmmoLib;
@@ -523,6 +525,13 @@ async function enterVR() {
     });
     await renderer.xr.setSession(vrSession);
     xrReferenceSpace = renderer.xr.getReferenceSpace?.() || await vrSession.requestReferenceSpace('local-floor');
+    // Default standing pose so first frame is valid before viewer pose is available
+    camera.position.set(0, 1.6, 0);
+    camera.quaternion.set(0, 0, 0, 1);
+    camera.lookAt(0, 1.6, -1);
+    // Ensure sky background is visible in headset (avoid black clear)
+    if (scene.background) renderer.setClearColor(scene.background);
+    if (groundGridHelper) groundGridHelper.visible = false;
     createVRReticle();
     const crosshairEl = document.getElementById('crosshair');
     if (crosshairEl) crosshairEl.style.visibility = 'hidden';
@@ -580,6 +589,7 @@ function onVRSessionEnd() {
   vrTriggerPressedLastFrame = false;
   if (vrReticle && scene) scene.remove(vrReticle);
   vrReticle = null;
+  if (groundGridHelper) groundGridHelper.visible = true;
   // Restore shadows for desktop
   renderer.shadowMap.enabled = true;
   if (mainDirectionalLight) mainDirectionalLight.castShadow = true;
@@ -590,6 +600,11 @@ function onVRSessionEnd() {
   const crosshairEl = document.getElementById('crosshair');
   if (crosshairEl) crosshairEl.style.visibility = '';
   renderer.setAnimationLoop(null);
+  // Reset camera so desktop view isn't stuck at VR head pose (on ground, tilted)
+  camera.position.set(0, 5, 10);
+  camera.lookAt(0, 0, 0);
+  camera.updateProjectionMatrix();
+  if (scene.background) renderer.setClearColor(scene.background);
   animate();
   if (typeof window.__updateFullscreenVRButtonLabel === 'function') window.__updateFullscreenVRButtonLabel();
 }
@@ -615,9 +630,12 @@ function updateVRFromFrame(xrFrame) {
   const viewerPose = xrFrame.getViewerPose(xrReferenceSpace);
   if (viewerPose && viewerPose.transform) {
     const t = viewerPose.transform;
-    camera.position.set(t.position.x, t.position.y, t.position.z);
+    // Clamp Y so we're never inside the ground (Quest floor can report wrong height)
+    const y = Math.max(t.position.y, 0.5);
+    camera.position.set(t.position.x, y, t.position.z);
     camera.quaternion.set(t.orientation.x, t.orientation.y, t.orientation.z, t.orientation.w);
   }
+  // If no pose (e.g. first frame), keep previous camera so we don't jump to a bad state
 
   const rightInput = vrSession?.inputSources?.find((s) => s.handedness === 'right');
   if (rightInput?.targetRaySpace) {
@@ -681,11 +699,11 @@ function createGround() {
   ground.receiveShadow = true;
   
   // Add grid lines for cel-shading style
-  const gridHelper = new THREE.GridHelper(100, 20, 0x000000, 0x000000);
-  gridHelper.position.y = 0.01;
-  gridHelper.material.opacity = 0.3;
-  gridHelper.material.transparent = true;
-  scene.add(gridHelper);
+  groundGridHelper = new THREE.GridHelper(100, 20, 0x000000, 0x000000);
+  groundGridHelper.position.y = 0.01;
+  groundGridHelper.material.opacity = 0.3;
+  groundGridHelper.material.transparent = true;
+  scene.add(groundGridHelper);
   
   // Add outline edges to ground
   const groundEdgesGeometry = new THREE.EdgesGeometry(groundGeometry);
