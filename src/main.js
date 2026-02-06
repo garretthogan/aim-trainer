@@ -787,6 +787,14 @@ function setupControls() {
   });
 }
 
+/** Returns a random count in [min, max] from settings (0 when both are 0). */
+function initialCountFromSettings(min, max) {
+  const lo = Math.min(min, max);
+  const hi = Math.max(min, max);
+  const range = hi - lo + 1;
+  return range <= 0 ? 0 : lo + Math.floor(Math.random() * range);
+}
+
 function startGame() {
   gameStarted = true;
   document.getElementById('instructions').classList.add('hidden');
@@ -805,12 +813,11 @@ function startGame() {
 
   ensureImpactSoundReady().then(() => resumeAudioContext());
 
-  const targetLo = Math.min(game.minTargets, game.maxTargets);
-  const targetHi = Math.max(game.minTargets, game.maxTargets);
-  const capsuleLo = Math.min(game.minCapsules, game.maxCapsules);
-  const capsuleHi = Math.max(game.minCapsules, game.maxCapsules);
-  const numTargets = targetLo + Math.floor(Math.random() * (targetHi - targetLo + 1));
-  const numCapsules = capsuleLo + Math.floor(Math.random() * (capsuleHi - capsuleLo + 1));
+  // Clear any existing targets/capsules so we spawn exactly the configured count (e.g. after "Play Again" -> "Click to start")
+  clearAllEntities();
+
+  const numTargets = initialCountFromSettings(game.minTargets, game.maxTargets);
+  const numCapsules = initialCountFromSettings(game.minCapsules, game.maxCapsules);
   for (let i = 0; i < numTargets; i++) {
     createTargetEntity(world, scene, physicsWorld, AmmoLib, camera);
   }
@@ -863,13 +870,9 @@ function restartGame() {
   timer.reset();
   
   clearAllEntities();
-  
-  const targetLo = Math.min(game.minTargets, game.maxTargets);
-  const targetHi = Math.max(game.minTargets, game.maxTargets);
-  const capsuleLo = Math.min(game.minCapsules, game.maxCapsules);
-  const capsuleHi = Math.max(game.minCapsules, game.maxCapsules);
-  const numTargets = targetLo + Math.floor(Math.random() * (targetHi - targetLo + 1));
-  const numCapsules = capsuleLo + Math.floor(Math.random() * (capsuleHi - capsuleLo + 1));
+
+  const numTargets = initialCountFromSettings(game.minTargets, game.maxTargets);
+  const numCapsules = initialCountFromSettings(game.minCapsules, game.maxCapsules);
   for (let i = 0; i < numTargets; i++) {
     createTargetEntity(world, scene, physicsWorld, AmmoLib, camera);
   }
@@ -916,12 +919,8 @@ function resetStage() {
   if (!world || !scene || !physicsWorld || !camera) return
   clearAllEntities()
   const game = getGameSettings()
-  const targetLo = Math.min(game.minTargets, game.maxTargets)
-  const targetHi = Math.max(game.minTargets, game.maxTargets)
-  const capsuleLo = Math.min(game.minCapsules, game.maxCapsules)
-  const capsuleHi = Math.max(game.minCapsules, game.maxCapsules)
-  const numTargets = targetLo + Math.floor(Math.random() * (targetHi - targetLo + 1))
-  const numCapsules = capsuleLo + Math.floor(Math.random() * (capsuleHi - capsuleLo + 1))
+  const numTargets = initialCountFromSettings(game.minTargets, game.maxTargets)
+  const numCapsules = initialCountFromSettings(game.minCapsules, game.maxCapsules)
   for (let i = 0; i < numTargets; i++) {
     createTargetEntity(world, scene, physicsWorld, AmmoLib, camera)
   }

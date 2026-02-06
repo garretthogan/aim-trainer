@@ -8,17 +8,22 @@ const DEFAULTS = {
   timerDuration: 60,
 };
 
+function parsedInt(value, defaultVal) {
+  const n = parseInt(value, 10);
+  return Number.isNaN(n) ? defaultVal : n;
+}
+
 export function getGameSettings() {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return { ...DEFAULTS };
     const parsed = JSON.parse(raw);
     return {
-      minCapsules: Math.max(0, parseInt(parsed.minCapsules, 10) || DEFAULTS.minCapsules),
-      maxCapsules: Math.max(0, parseInt(parsed.maxCapsules, 10) ?? DEFAULTS.maxCapsules),
-      minTargets: Math.max(0, parseInt(parsed.minTargets, 10) || DEFAULTS.minTargets),
-      maxTargets: Math.max(0, parseInt(parsed.maxTargets, 10) ?? DEFAULTS.maxTargets),
-      timerDuration: Math.max(5, parseInt(parsed.timerDuration, 10) || DEFAULTS.timerDuration),
+      minCapsules: Math.max(0, parsedInt(parsed.minCapsules, DEFAULTS.minCapsules)),
+      maxCapsules: Math.max(0, parsedInt(parsed.maxCapsules, DEFAULTS.maxCapsules)),
+      minTargets: Math.max(0, parsedInt(parsed.minTargets, DEFAULTS.minTargets)),
+      maxTargets: Math.max(0, parsedInt(parsed.maxTargets, DEFAULTS.maxTargets)),
+      timerDuration: Math.max(5, parsedInt(parsed.timerDuration, DEFAULTS.timerDuration)),
     };
   } catch {
     return { ...DEFAULTS };
@@ -27,11 +32,11 @@ export function getGameSettings() {
 
 export function setGameSettings(settings) {
   const safe = {
-    minCapsules: Math.max(0, parseInt(settings.minCapsules, 10) ?? DEFAULTS.minCapsules),
-    maxCapsules: Math.max(0, parseInt(settings.maxCapsules, 10) ?? DEFAULTS.maxCapsules),
-    minTargets: Math.max(0, parseInt(settings.minTargets, 10) ?? DEFAULTS.minTargets),
-    maxTargets: Math.max(0, parseInt(settings.maxTargets, 10) ?? DEFAULTS.maxTargets),
-    timerDuration: Math.max(5, parseInt(settings.timerDuration, 10) ?? DEFAULTS.timerDuration),
+    minCapsules: Math.max(0, parsedInt(settings.minCapsules, DEFAULTS.minCapsules)),
+    maxCapsules: Math.max(0, parsedInt(settings.maxCapsules, DEFAULTS.maxCapsules)),
+    minTargets: Math.max(0, parsedInt(settings.minTargets, DEFAULTS.minTargets)),
+    maxTargets: Math.max(0, parsedInt(settings.maxTargets, DEFAULTS.maxTargets)),
+    timerDuration: Math.max(5, parsedInt(settings.timerDuration, DEFAULTS.timerDuration)),
   };
   localStorage.setItem(STORAGE_KEY, JSON.stringify(safe));
   return safe;
