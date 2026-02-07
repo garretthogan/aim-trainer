@@ -1,4 +1,5 @@
 import { defineConfig } from 'vite'
+import { resolve } from 'path'
 
 // https://vitejs.dev/config/
 export default defineConfig({
@@ -10,5 +11,11 @@ export default defineConfig({
     outDir: 'dist',
     assetsDir: 'assets',
     sourcemap: false,
-  }
+    rollupOptions: {
+      input: {
+        main: resolve(__dirname, 'index.html'),
+        'vr-test': resolve(__dirname, 'vr-test.html'),
+      },
+    },
+  },
 })
