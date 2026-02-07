@@ -232,8 +232,7 @@ function runGame() {
     AmmoLib = Ammo
     console.log('Ammo.js loaded successfully!')
     init()
-    // Use setAnimationLoop from the start (Three.js VR pattern). Same loop runs in 2D and VR.
-    renderer.setAnimationLoop(animate)
+    // setAnimationLoop(animate) is called in init() to match Three.js WebXR examples
   }).catch(error => {
     console.error('Failed to load Ammo.js:', error)
     document.getElementById('instructions').innerHTML = '<p>Failed to load physics engine</p><p>Please refresh the page</p>'
@@ -279,18 +278,17 @@ function init() {
   camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
   camera.position.set(0, 5, 10);
 
-  // Setup renderer (same as Three.js VR examples – VRButton will call setSession)
+  // Setup renderer – match Three.js WebXR examples (webxr_vr_handinput, webxr_vr_handinput_pointerclick)
   renderer = new THREE.WebGLRenderer({ antialias: true });
+  renderer.setPixelRatio(window.devicePixelRatio);
   renderer.setSize(window.innerWidth, window.innerHeight);
+  renderer.setAnimationLoop(animate);
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   renderer.toneMapping = THREE.NoToneMapping;
   renderer.toneMappingExposure = 1.0;
   renderer.xr.enabled = true;
-  // Use 'local' so origin is at head – avoids Quest local-floor bugs that can cause black/wrong view
-  renderer.xr.setReferenceSpaceType('local');
-  // Lower scale so first XR frame is cheaper; Quest may stay on loading UI if first frame is too slow
-  renderer.xr.setFramebufferScaleFactor(0.75);
+  renderer.xr.cameraAutoUpdate = false; // match pointerclick example: we call updateCamera(camera) in animate
   document.getElementById('game-container').appendChild(renderer.domElement);
   const vrButton = VRButton.createButton(renderer);
   vrButton.id = 'VRButton';
@@ -1484,6 +1482,9 @@ function animate(time, xrFrame) {
   if (!hasRenderedOnce) hasRenderedOnce = true;
   const delta = clock.getDelta();
 
+  // Match webxr_vr_handinput_pointerclick: update camera from XR pose each frame (cameraAutoUpdate is false)
+  renderer.xr.updateCamera(camera);
+
   if (xrFrame && isVRActive) {
     updateVRFromFrame(xrFrame);
     if (scene.background) renderer.setClearColor(scene.background);
@@ -1504,7 +1505,6 @@ function animate(time, xrFrame) {
 
   updateMovement(delta);
 
-  // Always pass the scene camera: Three.js updates it for XR (updateCamera) then uses its internal XR camera for stereo
   renderer.render(scene, camera);
 }
 
