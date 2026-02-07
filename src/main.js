@@ -71,6 +71,8 @@ const vrViewerPosition = new THREE.Vector3();
 const vrViewerQuaternion = new THREE.Quaternion();
 let vrReticle = null;
 let vrTriggerPressedLastFrame = false;
+/** Set after first animate() run. Enter VR is deferred until true so Quest gets a "warm" context and can replace its loading UI. */
+let hasRenderedOnce = false;
 
 // Clock
 const clock = new THREE.Clock();
@@ -285,7 +287,10 @@ function init() {
   renderer.toneMapping = THREE.NoToneMapping;
   renderer.toneMappingExposure = 1.0;
   renderer.xr.enabled = true;
-  renderer.xr.setReferenceSpaceType('local-floor');
+  // Use 'local' so origin is at head – avoids Quest local-floor bugs that can cause black/wrong view
+  renderer.xr.setReferenceSpaceType('local');
+  // Lower scale so first XR frame is cheaper; Quest may stay on loading UI if first frame is too slow
+  renderer.xr.setFramebufferScaleFactor(0.75);
   document.getElementById('game-container').appendChild(renderer.domElement);
   const vrButton = VRButton.createButton(renderer);
   vrButton.id = 'VRButton';
@@ -521,6 +526,11 @@ function onBrowserEnterVR() {
 /** Enter VR by triggering the official VRButton (session created by Three.js so headset receives render). */
 function enterVR() {
   if (vrSession) return;
+  // Defer until we've drawn at least one frame so Quest has a "warm" WebGL context and can replace its loading UI (black + dots/streaks) with our scene
+  if (!hasRenderedOnce) {
+    requestAnimationFrame(enterVR);
+    return;
+  }
   document.getElementById('VRButton')?.click();
 }
 
@@ -539,6 +549,10 @@ function onVRSessionStart() {
   });
   xrReferenceSpace = renderer.xr.getReferenceSpace?.() || null;
   if (groundGridHelper) groundGridHelper.visible = false;
+  // Hide all line/edge geometry in VR so they don’t appear as floating dots or streaks
+  scene.traverse((obj) => {
+    if (obj.type === 'LineSegments' || obj.type === 'Line' || (obj.isLineSegments)) obj.visible = false;
+  });
   createVRReticle();
   const crosshairEl = document.getElementById('crosshair');
   if (crosshairEl) crosshairEl.style.visibility = 'hidden';
@@ -578,6 +592,9 @@ function onVRSessionEnd() {
   if (vrReticle && scene) scene.remove(vrReticle);
   vrReticle = null;
   if (groundGridHelper) groundGridHelper.visible = true;
+  scene.traverse((obj) => {
+    if (obj.type === 'LineSegments' || obj.type === 'Line' || (obj.isLineSegments)) obj.visible = true;
+  });
   // Restore shadows for desktop
   renderer.shadowMap.enabled = true;
   if (mainDirectionalLight) mainDirectionalLight.castShadow = true;
@@ -1464,6 +1481,7 @@ function updateMovement(delta) {
 }
 
 function animate(time, xrFrame) {
+  if (!hasRenderedOnce) hasRenderedOnce = true;
   const delta = clock.getDelta();
 
   if (xrFrame && isVRActive) {
