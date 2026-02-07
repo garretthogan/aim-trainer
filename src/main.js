@@ -1,7 +1,6 @@
 import './style.css'
 import * as THREE from 'three'
 import { VRButton } from 'three/addons/webxr/VRButton.js'
-import { XRControllerModelFactory } from 'three/addons/webxr/XRControllerModelFactory.js'
 import { getCapsuleConfig, setCapsuleConfig, DEFAULTS } from './capsuleConfig.js'
 import { getGameSettings, setGameSettings, DEFAULTS as GameDefaults } from './gameSettings.js'
 import { World } from './ecs.js'
@@ -67,16 +66,15 @@ let xrReferenceSpace = null;
 const vrControllerPosition = new THREE.Vector3();
 const vrControllerQuaternion = new THREE.Quaternion();
 const vrControllerDirection = new THREE.Vector3(0, 0, -1);
+const vrControllerPositionLeft = new THREE.Vector3();
 /** Viewer pose in VR (for game logic only). Three.js XR manager drives the actual camera. */
 const vrViewerPosition = new THREE.Vector3();
 const vrViewerQuaternion = new THREE.Quaternion();
 let vrReticle = null;
 let vrTriggerPressedLastFrame = false;
-/** Controller and grip groups for visible motion controllers in VR (removed on session end). */
-let vrControllerLeft = null;
-let vrControllerRight = null;
-let vrControllerGripLeft = null;
-let vrControllerGripRight = null;
+/** Simple spheres drawn at controller positions in world space (no room-scale / model loading). */
+let vrControllerSphereLeft = null;
+let vrControllerSphereRight = null;
 /** Set after first animate() run. Enter VR is deferred until true so Quest gets a "warm" context and can replace its loading UI. */
 let hasRenderedOnce = false;
 
@@ -346,6 +344,8 @@ function initSceneAndRenderer() {
   renderer.toneMapping = THREE.NoToneMapping;
   renderer.toneMappingExposure = 1.0;
   renderer.xr.enabled = true;
+  // 'local' = stationary; no room-scale or floor boundary required
+  renderer.xr.setReferenceSpaceType('local');
   gameContainer.appendChild(renderer.domElement);
   const vrButton = VRButton.createButton(renderer);
   vrButton.id = 'VRButton';
@@ -557,18 +557,14 @@ function onVRSessionStart() {
     if (obj.type === 'LineSegments' || obj.type === 'Line' || (obj.isLineSegments)) obj.visible = false;
   });
   createVRReticle();
-  // Visible motion controllers (index 0 = left, 1 = right)
-  const controllerModelFactory = new XRControllerModelFactory();
-  vrControllerLeft = renderer.xr.getController(0);
-  vrControllerRight = renderer.xr.getController(1);
-  vrControllerGripLeft = renderer.xr.getControllerGrip(0);
-  vrControllerGripRight = renderer.xr.getControllerGrip(1);
-  vrControllerGripLeft.add(controllerModelFactory.createControllerModel(vrControllerGripLeft));
-  vrControllerGripRight.add(controllerModelFactory.createControllerModel(vrControllerGripRight));
-  scene.add(vrControllerLeft);
-  scene.add(vrControllerRight);
-  scene.add(vrControllerGripLeft);
-  scene.add(vrControllerGripRight);
+  // Simple spheres at controller positions (world space) – no room-scale or model loading
+  const sphereGeo = new THREE.SphereGeometry(0.03, 16, 16);
+  vrControllerSphereLeft = new THREE.Mesh(sphereGeo, new THREE.MeshBasicMaterial({ color: 0x2288ff }));
+  vrControllerSphereRight = new THREE.Mesh(sphereGeo, new THREE.MeshBasicMaterial({ color: 0xff4422 }));
+  vrControllerSphereLeft.visible = false;
+  vrControllerSphereRight.visible = false;
+  scene.add(vrControllerSphereLeft);
+  scene.add(vrControllerSphereRight);
   const crosshairEl = document.getElementById('crosshair');
   if (crosshairEl) crosshairEl.style.visibility = 'hidden';
   document.getElementById('instructions').classList.add('hidden');
@@ -607,14 +603,10 @@ function onVRSessionEnd() {
   vrTriggerPressedLastFrame = false;
   if (vrReticle && scene) scene.remove(vrReticle);
   vrReticle = null;
-  if (vrControllerLeft && scene) scene.remove(vrControllerLeft);
-  if (vrControllerRight && scene) scene.remove(vrControllerRight);
-  if (vrControllerGripLeft && scene) scene.remove(vrControllerGripLeft);
-  if (vrControllerGripRight && scene) scene.remove(vrControllerGripRight);
-  vrControllerLeft = null;
-  vrControllerRight = null;
-  vrControllerGripLeft = null;
-  vrControllerGripRight = null;
+  if (vrControllerSphereLeft && scene) scene.remove(vrControllerSphereLeft);
+  if (vrControllerSphereRight && scene) scene.remove(vrControllerSphereRight);
+  vrControllerSphereLeft = null;
+  vrControllerSphereRight = null;
   if (groundGridHelper) groundGridHelper.visible = true;
   scene.traverse((obj) => {
     if (obj.type === 'LineSegments' || obj.type === 'Line' || (obj.isLineSegments)) obj.visible = true;
@@ -665,6 +657,21 @@ function updateVRFromFrame(xrFrame) {
     vrViewerQuaternion.set(t.orientation.x, t.orientation.y, t.orientation.z, t.orientation.w);
   }
 
+  const leftInput = vrSession?.inputSources?.find((s) => s.handedness === 'left');
+  if (leftInput?.targetRaySpace) {
+    const pose = xrFrame.getPose(leftInput.targetRaySpace, xrReferenceSpace);
+    if (pose?.transform) {
+      const t = pose.transform;
+      vrControllerPositionLeft.set(t.position.x, t.position.y, t.position.z);
+      if (vrControllerSphereLeft) {
+        vrControllerSphereLeft.position.copy(vrControllerPositionLeft);
+        vrControllerSphereLeft.visible = true;
+      }
+    }
+  } else if (vrControllerSphereLeft) {
+    vrControllerSphereLeft.visible = false;
+  }
+
   const rightInput = vrSession?.inputSources?.find((s) => s.handedness === 'right');
   if (rightInput?.targetRaySpace) {
     const pose = xrFrame.getPose(rightInput.targetRaySpace, xrReferenceSpace);
@@ -673,6 +680,10 @@ function updateVRFromFrame(xrFrame) {
       vrControllerPosition.set(t.position.x, t.position.y, t.position.z);
       vrControllerQuaternion.set(t.orientation.x, t.orientation.y, t.orientation.z, t.orientation.w);
       vrControllerDirection.set(0, 0, -1).applyQuaternion(vrControllerQuaternion);
+      if (vrControllerSphereRight) {
+        vrControllerSphereRight.position.copy(vrControllerPosition);
+        vrControllerSphereRight.visible = true;
+      }
       if (vrReticle) {
         vrReticle.visible = true;
         vrReticle.position.copy(vrControllerPosition).add(vrControllerDirection.clone().multiplyScalar(0.5));
@@ -680,6 +691,8 @@ function updateVRFromFrame(xrFrame) {
         vrReticle.lookAt(vrViewerPosition);
       }
     }
+  } else if (vrControllerSphereRight) {
+    vrControllerSphereRight.visible = false;
   }
 
   const triggerPressed = rightInput?.gamepad?.buttons?.[0]?.pressed || rightInput?.gamepad?.buttons?.[1]?.pressed;
