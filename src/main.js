@@ -75,9 +75,13 @@ const vrViewerQuaternion = new THREE.Quaternion();
 const DESKTOP_EYE_HEIGHT = 5;
 let vrReticle = null;
 let vrTriggerPressedLastFrame = false;
-/** Simple spheres drawn at controller positions in world space (no room-scale / model loading). */
+/** Controller debug spheres – attached to XR grip groups so they render and track. */
 let vrControllerSphereLeft = null;
 let vrControllerSphereRight = null;
+let vrControllerGrip0 = null;
+let vrControllerGrip1 = null;
+/** Set once on first VR frame from viewer Y so floor is DESKTOP_EYE_HEIGHT below head. */
+let vrFloorOffsetSet = false;
 /** Set after first animate() run. Enter VR is deferred until true so Quest gets a "warm" context and can replace its loading UI. */
 let hasRenderedOnce = false;
 
@@ -563,7 +567,12 @@ function onVRSessionStart() {
     if (obj.type === 'LineSegments' || obj.type === 'Line' || (obj.isLineSegments)) obj.visible = false;
   });
   createVRReticle();
+  vrFloorOffsetSet = false;
   if (gameContentGroup) gameContentGroup.position.y = -DESKTOP_EYE_HEIGHT;
+  vrControllerGrip0 = renderer.xr.getControllerGrip(0);
+  vrControllerGrip1 = renderer.xr.getControllerGrip(1);
+  scene.add(vrControllerGrip0);
+  scene.add(vrControllerGrip1);
   // updateVRFromFrame overrides with (viewer Y - 5) on first viewer pose so height matches desktop for sitting/standing
   // Simple spheres at controller positions – use grip space, larger size so they’re visible
   const sphereGeo = new THREE.SphereGeometry(0.06, 16, 16);
@@ -571,14 +580,10 @@ function onVRSessionStart() {
   const matRight = new THREE.MeshBasicMaterial({ color: 0xff4422, depthTest: false, depthWrite: false });
   vrControllerSphereLeft = new THREE.Mesh(sphereGeo, matLeft);
   vrControllerSphereRight = new THREE.Mesh(sphereGeo, matRight);
-  vrControllerSphereLeft.position.set(-0.2, 0, -0.4);
-  vrControllerSphereRight.position.set(0.2, 0, -0.4);
-  vrControllerSphereLeft.renderOrder = 999;
-  vrControllerSphereRight.renderOrder = 999;
   vrControllerSphereLeft.frustumCulled = false;
   vrControllerSphereRight.frustumCulled = false;
-  scene.add(vrControllerSphereLeft);
-  scene.add(vrControllerSphereRight);
+  vrControllerGrip0.add(vrControllerSphereLeft);
+  vrControllerGrip1.add(vrControllerSphereRight);
   const crosshairEl = document.getElementById('crosshair');
   if (crosshairEl) crosshairEl.style.visibility = 'hidden';
   document.getElementById('instructions').classList.add('hidden');
@@ -614,14 +619,23 @@ function onVRSessionEnd() {
   vrSession = null;
   xrReferenceSpace = null;
   isVRActive = false;
+  vrFloorOffsetSet = false;
   vrTriggerPressedLastFrame = false;
   if (vrReticle && scene) scene.remove(vrReticle);
   vrReticle = null;
   if (gameContentGroup) gameContentGroup.position.y = 0;
-  if (vrControllerSphereLeft && scene) scene.remove(vrControllerSphereLeft);
-  if (vrControllerSphereRight && scene) scene.remove(vrControllerSphereRight);
+  if (vrControllerGrip0) {
+    if (vrControllerSphereLeft) vrControllerGrip0.remove(vrControllerSphereLeft);
+    scene.remove(vrControllerGrip0);
+  }
+  if (vrControllerGrip1) {
+    if (vrControllerSphereRight) vrControllerGrip1.remove(vrControllerSphereRight);
+    scene.remove(vrControllerGrip1);
+  }
   vrControllerSphereLeft = null;
   vrControllerSphereRight = null;
+  vrControllerGrip0 = null;
+  vrControllerGrip1 = null;
   if (groundGridHelper) groundGridHelper.visible = true;
   scene.traverse((obj) => {
     if (obj.type === 'LineSegments' || obj.type === 'Line' || (obj.isLineSegments)) obj.visible = true;
@@ -669,19 +683,12 @@ function updateVRFromFrame(xrFrame) {
     const t = viewerPose.transform;
     vrViewerPosition.set(t.position.x, t.position.y, t.position.z);
     vrViewerQuaternion.set(t.orientation.x, t.orientation.y, t.orientation.z, t.orientation.w);
-  }
-
-  const leftInput = vrSession?.inputSources?.find((s) => s.handedness === 'left');
-  if (leftInput && vrControllerSphereLeft) {
-    const space = leftInput.gripSpace || leftInput.targetRaySpace;
-    if (space) {
-      const pose = xrFrame.getPose(space, xrReferenceSpace);
-      if (pose?.transform) {
-        const t = pose.transform;
-        vrControllerSphereLeft.position.set(t.position.x, t.position.y, t.position.z);
-      }
+    if (!vrFloorOffsetSet && gameContentGroup) {
+      gameContentGroup.position.y = t.position.y - DESKTOP_EYE_HEIGHT;
+      vrFloorOffsetSet = true;
     }
   }
+  // Controller spheres are children of grip groups – Three.js updates grip transforms; no manual position needed
 
   // Right controller: targetRaySpace for reticle and shooting; sphere uses grip or ray
   const rightInput = vrSession?.inputSources?.find((s) => s.handedness === 'right');
@@ -700,17 +707,6 @@ function updateVRFromFrame(xrFrame) {
       }
     }
   }
-  if (rightInput && vrControllerSphereRight) {
-    const space = rightInput.gripSpace || rightInput.targetRaySpace;
-    if (space) {
-      const pose = xrFrame.getPose(space, xrReferenceSpace);
-      if (pose?.transform) {
-        const t = pose.transform;
-        vrControllerSphereRight.position.set(t.position.x, t.position.y, t.position.z);
-      }
-    }
-  }
-
   const triggerPressed = rightInput?.gamepad?.buttons?.[0]?.pressed || rightInput?.gamepad?.buttons?.[1]?.pressed;
   if (triggerPressed && !vrTriggerPressedLastFrame && gameStarted && !gamePaused) {
     shootProjectile();
