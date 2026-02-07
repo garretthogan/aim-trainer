@@ -318,7 +318,7 @@ function initGameContent() {
   startThemeSong(); // may be blocked until user interacts
 }
 
-/** Creates scene, camera, renderer (xrCompatible), lights, and starts the animation loop so the canvas draws from frame 1. Called before Ammo loads. */
+/** Creates scene, camera, renderer, lights, and starts the animation loop. Called before Ammo loads. */
 function initSceneAndRenderer() {
   // Setup scene - solid color background for cel-shaded look
   scene = new THREE.Scene();
@@ -329,27 +329,9 @@ function initSceneAndRenderer() {
   camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
   camera.position.set(0, 5, 10);
 
-  // Create WebGL context with xrCompatible: true so Quest doesn't reconfigure the context on setSession (avoids black screen)
+  // Default renderer (match working Three.js examples – no custom context)
   const gameContainer = document.getElementById('game-container');
-  const canvas = document.createElement('canvas');
-  const gl = canvas.getContext('webgl2', {
-    alpha: true,
-    depth: true,
-    stencil: false,
-    antialias: true,
-    premultipliedAlpha: true,
-    preserveDrawingBuffer: false,
-    powerPreference: 'default',
-    failIfMajorPerformanceCaveat: false,
-    xrCompatible: true,
-  });
-  if (!gl) throw new Error('WebGL2 not supported');
-  renderer = new THREE.WebGLRenderer({
-    canvas,
-    context: gl,
-    antialias: true,
-    depth: true,
-  });
+  renderer = new THREE.WebGLRenderer({ antialias: true });
   renderer.setPixelRatio(window.devicePixelRatio);
   renderer.setSize(window.innerWidth, window.innerHeight);
   renderer.setAnimationLoop(animate);
@@ -359,6 +341,8 @@ function initSceneAndRenderer() {
   renderer.toneMappingExposure = 1.0;
   renderer.xr.enabled = true;
   renderer.xr.cameraAutoUpdate = false;
+  // 'local' is always available; avoids getViewerPose() returning null (Quest can show black if we never set the XR render target)
+  renderer.xr.setReferenceSpaceType('local');
   gameContainer.appendChild(renderer.domElement);
   const vrButton = VRButton.createButton(renderer);
   vrButton.id = 'VRButton';
