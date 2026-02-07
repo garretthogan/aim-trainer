@@ -533,9 +533,12 @@ function onVRSessionStart() {
   vrSession = renderer.xr.getSession();
   if (!vrSession) return;
   isVRActive = true;
-  gamePaused = false;
-  hidePauseMenu();
-  renderer.shadowMap.enabled = false;
+  // Defer all scene/state changes to next frame so the first XR frame runs like the minimal test (fixes black screen on Quest)
+  requestAnimationFrame(function doVRSessionSetup() {
+    if (!vrSession) return;
+    gamePaused = false;
+    hidePauseMenu();
+    renderer.shadowMap.enabled = false;
   if (mainDirectionalLight) mainDirectionalLight.castShadow = false;
   scene.traverse((obj) => {
     if (obj.castShadow !== undefined) obj.castShadow = false;
@@ -555,6 +558,7 @@ function onVRSessionStart() {
   vrSession.addEventListener('selectend', onVRSelectEnd);
   if (typeof window.__updateFullscreenVRButtonLabel === 'function') window.__updateFullscreenVRButtonLabel();
   if (!gameStarted) startGame();
+  });
 }
 
 function createVRReticle() {
@@ -1480,7 +1484,6 @@ function animate(time, xrFrame) {
 
   if (xrFrame && isVRActive) {
     updateVRFromFrame(xrFrame);
-    if (scene.background) renderer.setClearColor(scene.background);
   }
 
   // Update ECS systems
