@@ -228,15 +228,16 @@ function initSettingsPage() {
 }
 
 function runGame() {
+  // Start scene and render loop immediately so the canvas is drawing from frame 1 (Quest can then show our layer when entering VR)
+  initSceneAndRenderer();
   loadAmmo().then((Ammo) => {
-    AmmoLib = Ammo
-    console.log('Ammo.js loaded successfully!')
-    init()
-    // setAnimationLoop(animate) is called in init() to match Three.js WebXR examples
+    AmmoLib = Ammo;
+    console.log('Ammo.js loaded successfully!');
+    initGameContent();
   }).catch(error => {
-    console.error('Failed to load Ammo.js:', error)
-    document.getElementById('instructions').innerHTML = '<p>Failed to load physics engine</p><p>Please refresh the page</p>'
-  })
+    console.error('Failed to load Ammo.js:', error);
+    document.getElementById('instructions').innerHTML = '<p>Failed to load physics engine</p><p>Please refresh the page</p>';
+  });
 }
 
 // Load Ammo.js dynamically
@@ -268,63 +269,8 @@ async function loadAmmo() {
 }
 
 
-function init() {
-  // Setup scene - solid color background for cel-shaded look
-  scene = new THREE.Scene();
-  scene.background = new THREE.Color(0x87ceeb); // Sky blue for cartoon style
-  scene.fog = new THREE.Fog(0x87ceeb, 120, 300);
-
-  // Setup camera
-  camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-  camera.position.set(0, 5, 10);
-
-  // Setup renderer – match Three.js WebXR examples (webxr_vr_handinput, webxr_vr_handinput_pointerclick)
-  renderer = new THREE.WebGLRenderer({ antialias: true });
-  renderer.setPixelRatio(window.devicePixelRatio);
-  renderer.setSize(window.innerWidth, window.innerHeight);
-  renderer.setAnimationLoop(animate);
-  renderer.shadowMap.enabled = true;
-  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-  renderer.toneMapping = THREE.NoToneMapping;
-  renderer.toneMappingExposure = 1.0;
-  renderer.xr.enabled = true;
-  renderer.xr.cameraAutoUpdate = false; // match pointerclick example: we call updateCamera(camera) in animate
-  document.getElementById('game-container').appendChild(renderer.domElement);
-  const vrButton = VRButton.createButton(renderer);
-  vrButton.id = 'VRButton';
-  document.getElementById('game-container').appendChild(vrButton);
-  renderer.xr.addEventListener('sessionstart', onVRSessionStart);
-  renderer.xr.addEventListener('sessionend', onVRSessionEnd);
-
-  // Setup lights - much brighter
-  const ambientLight = new THREE.AmbientLight(0xffffff, 0.8);
-  scene.add(ambientLight);
-
-  mainDirectionalLight = new THREE.DirectionalLight(0xffffff, 1.2);
-  mainDirectionalLight.position.set(10, 20, 10);
-  mainDirectionalLight.castShadow = true;
-  mainDirectionalLight.shadow.camera.left = -50;
-  mainDirectionalLight.shadow.camera.right = 50;
-  mainDirectionalLight.shadow.camera.top = 50;
-  mainDirectionalLight.shadow.camera.bottom = -50;
-  mainDirectionalLight.shadow.mapSize.width = 2048;
-  mainDirectionalLight.shadow.mapSize.height = 2048;
-  scene.add(mainDirectionalLight);
-
-  // Additional directional light from opposite side
-  const directionalLight2 = new THREE.DirectionalLight(0xffffff, 0.6);
-  directionalLight2.position.set(-10, 15, -10);
-  scene.add(directionalLight2);
-
-  const pointLight1 = new THREE.PointLight(0x00ffff, 1.0, 80);
-  pointLight1.position.set(-20, 10, -20);
-  scene.add(pointLight1);
-
-  const pointLight2 = new THREE.PointLight(0xff00ff, 1.0, 80);
-  pointLight2.position.set(20, 10, 20);
-  scene.add(pointLight2);
-
-  // Setup physics
+function initGameContent() {
+  // Setup physics (scene, camera, renderer, lights already created in initSceneAndRenderer)
   setupPhysicsWorld();
 
   // Create ECS World
@@ -361,21 +307,90 @@ function init() {
   // Setup controls
   setupControls();
 
-  // Handle window resize
-  window.addEventListener('resize', onWindowResize);
-
   // Start game on click
   document.getElementById('instructions').addEventListener('click', startGame);
-  
+
   // Restart game on button click
   document.getElementById('restart-button').addEventListener('click', restartGame);
-
-  // VR: show Enter VR button if supported, wire session and controllers
-  initVR();
 
   // Audio: theme song, mute, volume (listener already attached at load so first click starts theme)
   initAudioControls();
   startThemeSong(); // may be blocked until user interacts
+}
+
+/** Creates scene, camera, renderer (xrCompatible), lights, and starts the animation loop so the canvas draws from frame 1. Called before Ammo loads. */
+function initSceneAndRenderer() {
+  // Setup scene - solid color background for cel-shaded look
+  scene = new THREE.Scene();
+  scene.background = new THREE.Color(0x87ceeb); // Sky blue for cartoon style
+  scene.fog = new THREE.Fog(0x87ceeb, 120, 300);
+
+  // Setup camera
+  camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+  camera.position.set(0, 5, 10);
+
+  // Create WebGL context with xrCompatible: true so Quest doesn't reconfigure the context on setSession (avoids black screen)
+  const gameContainer = document.getElementById('game-container');
+  const canvas = document.createElement('canvas');
+  const gl = canvas.getContext('webgl2', {
+    alpha: true,
+    depth: true,
+    stencil: false,
+    antialias: true,
+    premultipliedAlpha: true,
+    preserveDrawingBuffer: false,
+    powerPreference: 'default',
+    failIfMajorPerformanceCaveat: false,
+    xrCompatible: true,
+  });
+  if (!gl) throw new Error('WebGL2 not supported');
+  renderer = new THREE.WebGLRenderer({
+    canvas,
+    context: gl,
+    antialias: true,
+    depth: true,
+  });
+  renderer.setPixelRatio(window.devicePixelRatio);
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  renderer.setAnimationLoop(animate);
+  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  renderer.toneMapping = THREE.NoToneMapping;
+  renderer.toneMappingExposure = 1.0;
+  renderer.xr.enabled = true;
+  renderer.xr.cameraAutoUpdate = false;
+  gameContainer.appendChild(renderer.domElement);
+  const vrButton = VRButton.createButton(renderer);
+  vrButton.id = 'VRButton';
+  gameContainer.appendChild(vrButton);
+  renderer.xr.addEventListener('sessionstart', onVRSessionStart);
+  renderer.xr.addEventListener('sessionend', onVRSessionEnd);
+
+  // Lights so the first frames draw something
+  const ambientLight = new THREE.AmbientLight(0xffffff, 0.8);
+  scene.add(ambientLight);
+  mainDirectionalLight = new THREE.DirectionalLight(0xffffff, 1.2);
+  mainDirectionalLight.position.set(10, 20, 10);
+  mainDirectionalLight.castShadow = true;
+  mainDirectionalLight.shadow.camera.left = -50;
+  mainDirectionalLight.shadow.camera.right = 50;
+  mainDirectionalLight.shadow.camera.top = 50;
+  mainDirectionalLight.shadow.camera.bottom = -50;
+  mainDirectionalLight.shadow.mapSize.width = 2048;
+  mainDirectionalLight.shadow.mapSize.height = 2048;
+  scene.add(mainDirectionalLight);
+  const directionalLight2 = new THREE.DirectionalLight(0xffffff, 0.6);
+  directionalLight2.position.set(-10, 15, -10);
+  scene.add(directionalLight2);
+  const pointLight1 = new THREE.PointLight(0x00ffff, 1.0, 80);
+  pointLight1.position.set(-20, 10, -20);
+  scene.add(pointLight1);
+  const pointLight2 = new THREE.PointLight(0xff00ff, 1.0, 80);
+  pointLight2.position.set(20, 10, 20);
+  scene.add(pointLight2);
+
+  window.addEventListener('resize', onWindowResize);
+  initVR();
 }
 
 function onFirstUserGestureStartTheme() {
