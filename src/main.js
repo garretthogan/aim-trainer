@@ -340,9 +340,6 @@ function initSceneAndRenderer() {
   renderer.toneMapping = THREE.NoToneMapping;
   renderer.toneMappingExposure = 1.0;
   renderer.xr.enabled = true;
-  renderer.xr.cameraAutoUpdate = false;
-  // 'local' is always available; avoids getViewerPose() returning null (Quest can show black if we never set the XR render target)
-  renderer.xr.setReferenceSpaceType('local');
   gameContainer.appendChild(renderer.domElement);
   const vrButton = VRButton.createButton(renderer);
   vrButton.id = 'VRButton';
@@ -1480,9 +1477,6 @@ function updateMovement(delta) {
 function animate(time, xrFrame) {
   if (!hasRenderedOnce) hasRenderedOnce = true;
   const delta = clock.getDelta();
-
-  // Match webxr_vr_handinput_pointerclick: update camera from XR pose each frame (cameraAutoUpdate is false)
-  renderer.xr.updateCamera(camera);
 
   if (xrFrame && isVRActive) {
     updateVRFromFrame(xrFrame);
