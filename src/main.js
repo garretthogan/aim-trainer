@@ -563,13 +563,13 @@ function onVRSessionStart() {
   });
   createVRReticle();
   // Offset play area down so floor is below head (local space = head at origin)
-  if (gameContentGroup) gameContentGroup.position.y = -1.6;
+  if (gameContentGroup) gameContentGroup.position.y = -2.0;
   // Simple spheres at controller positions – use grip space, larger size so they’re visible
-  const sphereGeo = new THREE.SphereGeometry(0.08, 16, 16);
-  vrControllerSphereLeft = new THREE.Mesh(sphereGeo, new THREE.MeshBasicMaterial({ color: 0x2288ff, depthTest: true }));
-  vrControllerSphereRight = new THREE.Mesh(sphereGeo, new THREE.MeshBasicMaterial({ color: 0xff4422, depthTest: true }));
-  vrControllerSphereLeft.position.set(0, -2, 0);
-  vrControllerSphereRight.position.set(0, -2, 0);
+  const sphereGeo = new THREE.SphereGeometry(0.12, 16, 16);
+  vrControllerSphereLeft = new THREE.Mesh(sphereGeo, new THREE.MeshBasicMaterial({ color: 0x2288ff, depthTest: false }));
+  vrControllerSphereRight = new THREE.Mesh(sphereGeo, new THREE.MeshBasicMaterial({ color: 0xff4422, depthTest: false }));
+  vrControllerSphereLeft.position.set(-0.3, 0, -0.5);
+  vrControllerSphereRight.position.set(0.3, 0, -0.5);
   scene.add(vrControllerSphereLeft);
   scene.add(vrControllerSphereRight);
   const crosshairEl = document.getElementById('crosshair');
@@ -665,18 +665,20 @@ function updateVRFromFrame(xrFrame) {
     vrViewerQuaternion.set(t.orientation.x, t.orientation.y, t.orientation.z, t.orientation.w);
   }
 
-  // Left controller: use gripSpace for sphere position (where you hold it)
+  // Left controller sphere: use gripSpace, fallback to targetRaySpace
   const leftInput = vrSession?.inputSources?.find((s) => s.handedness === 'left');
-  if (leftInput?.gripSpace) {
-    const pose = xrFrame.getPose(leftInput.gripSpace, xrReferenceSpace);
-    if (pose?.transform && vrControllerSphereLeft) {
-      const t = pose.transform;
-      vrControllerPositionLeft.set(t.position.x, t.position.y, t.position.z);
-      vrControllerSphereLeft.position.copy(vrControllerPositionLeft);
+  if (leftInput && vrControllerSphereLeft) {
+    const space = leftInput.gripSpace || leftInput.targetRaySpace;
+    if (space) {
+      const pose = xrFrame.getPose(space, xrReferenceSpace);
+      if (pose?.transform) {
+        const t = pose.transform;
+        vrControllerSphereLeft.position.set(t.position.x, t.position.y, t.position.z);
+      }
     }
   }
 
-  // Right controller: gripSpace for sphere, targetRaySpace for reticle and shooting
+  // Right controller: targetRaySpace for reticle and shooting; sphere uses grip or ray
   const rightInput = vrSession?.inputSources?.find((s) => s.handedness === 'right');
   if (rightInput?.targetRaySpace) {
     const rayPose = xrFrame.getPose(rightInput.targetRaySpace, xrReferenceSpace);
@@ -693,11 +695,14 @@ function updateVRFromFrame(xrFrame) {
       }
     }
   }
-  if (rightInput?.gripSpace && vrControllerSphereRight) {
-    const gripPose = xrFrame.getPose(rightInput.gripSpace, xrReferenceSpace);
-    if (gripPose?.transform) {
-      const t = gripPose.transform;
-      vrControllerSphereRight.position.set(t.position.x, t.position.y, t.position.z);
+  if (rightInput && vrControllerSphereRight) {
+    const space = rightInput.gripSpace || rightInput.targetRaySpace;
+    if (space) {
+      const pose = xrFrame.getPose(space, xrReferenceSpace);
+      if (pose?.transform) {
+        const t = pose.transform;
+        vrControllerSphereRight.position.set(t.position.x, t.position.y, t.position.z);
+      }
     }
   }
 
