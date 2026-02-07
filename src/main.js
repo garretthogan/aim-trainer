@@ -562,14 +562,21 @@ function onVRSessionStart() {
     if (obj.type === 'LineSegments' || obj.type === 'Line' || (obj.isLineSegments)) obj.visible = false;
   });
   createVRReticle();
-  // Offset play area down so floor is below head (local space = head at origin)
-  if (gameContentGroup) gameContentGroup.position.y = -2.0;
+  // Offset play area so floor is same height below head as non-VR (camera at Y=5, floor at 0)
+  const desktopEyeHeight = 5;
+  if (gameContentGroup) gameContentGroup.position.y = -desktopEyeHeight;
   // Simple spheres at controller positions – use grip space, larger size so they’re visible
-  const sphereGeo = new THREE.SphereGeometry(0.12, 16, 16);
-  vrControllerSphereLeft = new THREE.Mesh(sphereGeo, new THREE.MeshBasicMaterial({ color: 0x2288ff, depthTest: false }));
-  vrControllerSphereRight = new THREE.Mesh(sphereGeo, new THREE.MeshBasicMaterial({ color: 0xff4422, depthTest: false }));
+  const sphereGeo = new THREE.SphereGeometry(0.05, 16, 16);
+  const matLeft = new THREE.MeshBasicMaterial({ color: 0x2288ff, depthTest: false, depthWrite: false });
+  const matRight = new THREE.MeshBasicMaterial({ color: 0xff4422, depthTest: false, depthWrite: false });
+  vrControllerSphereLeft = new THREE.Mesh(sphereGeo, matLeft);
+  vrControllerSphereRight = new THREE.Mesh(sphereGeo, matRight);
   vrControllerSphereLeft.position.set(-0.3, 0, -0.5);
   vrControllerSphereRight.position.set(0.3, 0, -0.5);
+  vrControllerSphereLeft.renderOrder = 999;
+  vrControllerSphereRight.renderOrder = 999;
+  vrControllerSphereLeft.frustumCulled = false;
+  vrControllerSphereRight.frustumCulled = false;
   scene.add(vrControllerSphereLeft);
   scene.add(vrControllerSphereRight);
   const crosshairEl = document.getElementById('crosshair');
