@@ -34,6 +34,8 @@ let scene, camera, renderer;
 let mainDirectionalLight = null;
 /** Ground grid (hidden in VR to avoid "white streaks" at floor level). */
 let groundGridHelper = null;
+/** Group containing ground, walls, targets, projectiles; offset down in VR so floor is below the head. */
+let gameContentGroup = null;
 let physicsWorld;
 let tmpTrans;
 let AmmoLib;
@@ -274,6 +276,9 @@ async function loadAmmo() {
 
 
 function initGameContent() {
+  // Group for play area so we can offset it in VR (floor below head)
+  gameContentGroup = new THREE.Group();
+  scene.add(gameContentGroup);
   // Setup physics (scene, camera, renderer, lights already created in initSceneAndRenderer)
   setupPhysicsWorld();
 
@@ -557,12 +562,14 @@ function onVRSessionStart() {
     if (obj.type === 'LineSegments' || obj.type === 'Line' || (obj.isLineSegments)) obj.visible = false;
   });
   createVRReticle();
-  // Simple spheres at controller positions (world space) – no room-scale or model loading
-  const sphereGeo = new THREE.SphereGeometry(0.03, 16, 16);
-  vrControllerSphereLeft = new THREE.Mesh(sphereGeo, new THREE.MeshBasicMaterial({ color: 0x2288ff }));
-  vrControllerSphereRight = new THREE.Mesh(sphereGeo, new THREE.MeshBasicMaterial({ color: 0xff4422 }));
-  vrControllerSphereLeft.visible = false;
-  vrControllerSphereRight.visible = false;
+  // Offset play area down so floor is below head (local space = head at origin)
+  if (gameContentGroup) gameContentGroup.position.y = -1.6;
+  // Simple spheres at controller positions – use grip space, larger size so they’re visible
+  const sphereGeo = new THREE.SphereGeometry(0.08, 16, 16);
+  vrControllerSphereLeft = new THREE.Mesh(sphereGeo, new THREE.MeshBasicMaterial({ color: 0x2288ff, depthTest: true }));
+  vrControllerSphereRight = new THREE.Mesh(sphereGeo, new THREE.MeshBasicMaterial({ color: 0xff4422, depthTest: true }));
+  vrControllerSphereLeft.position.set(0, -2, 0);
+  vrControllerSphereRight.position.set(0, -2, 0);
   scene.add(vrControllerSphereLeft);
   scene.add(vrControllerSphereRight);
   const crosshairEl = document.getElementById('crosshair');
@@ -603,6 +610,7 @@ function onVRSessionEnd() {
   vrTriggerPressedLastFrame = false;
   if (vrReticle && scene) scene.remove(vrReticle);
   vrReticle = null;
+  if (gameContentGroup) gameContentGroup.position.y = 0;
   if (vrControllerSphereLeft && scene) scene.remove(vrControllerSphereLeft);
   if (vrControllerSphereRight && scene) scene.remove(vrControllerSphereRight);
   vrControllerSphereLeft = null;
@@ -657,33 +665,26 @@ function updateVRFromFrame(xrFrame) {
     vrViewerQuaternion.set(t.orientation.x, t.orientation.y, t.orientation.z, t.orientation.w);
   }
 
+  // Left controller: use gripSpace for sphere position (where you hold it)
   const leftInput = vrSession?.inputSources?.find((s) => s.handedness === 'left');
-  if (leftInput?.targetRaySpace) {
-    const pose = xrFrame.getPose(leftInput.targetRaySpace, xrReferenceSpace);
-    if (pose?.transform) {
+  if (leftInput?.gripSpace) {
+    const pose = xrFrame.getPose(leftInput.gripSpace, xrReferenceSpace);
+    if (pose?.transform && vrControllerSphereLeft) {
       const t = pose.transform;
       vrControllerPositionLeft.set(t.position.x, t.position.y, t.position.z);
-      if (vrControllerSphereLeft) {
-        vrControllerSphereLeft.position.copy(vrControllerPositionLeft);
-        vrControllerSphereLeft.visible = true;
-      }
+      vrControllerSphereLeft.position.copy(vrControllerPositionLeft);
     }
-  } else if (vrControllerSphereLeft) {
-    vrControllerSphereLeft.visible = false;
   }
 
+  // Right controller: gripSpace for sphere, targetRaySpace for reticle and shooting
   const rightInput = vrSession?.inputSources?.find((s) => s.handedness === 'right');
   if (rightInput?.targetRaySpace) {
-    const pose = xrFrame.getPose(rightInput.targetRaySpace, xrReferenceSpace);
-    if (pose?.transform) {
-      const t = pose.transform;
+    const rayPose = xrFrame.getPose(rightInput.targetRaySpace, xrReferenceSpace);
+    if (rayPose?.transform) {
+      const t = rayPose.transform;
       vrControllerPosition.set(t.position.x, t.position.y, t.position.z);
       vrControllerQuaternion.set(t.orientation.x, t.orientation.y, t.orientation.z, t.orientation.w);
       vrControllerDirection.set(0, 0, -1).applyQuaternion(vrControllerQuaternion);
-      if (vrControllerSphereRight) {
-        vrControllerSphereRight.position.copy(vrControllerPosition);
-        vrControllerSphereRight.visible = true;
-      }
       if (vrReticle) {
         vrReticle.visible = true;
         vrReticle.position.copy(vrControllerPosition).add(vrControllerDirection.clone().multiplyScalar(0.5));
@@ -691,8 +692,13 @@ function updateVRFromFrame(xrFrame) {
         vrReticle.lookAt(vrViewerPosition);
       }
     }
-  } else if (vrControllerSphereRight) {
-    vrControllerSphereRight.visible = false;
+  }
+  if (rightInput?.gripSpace && vrControllerSphereRight) {
+    const gripPose = xrFrame.getPose(rightInput.gripSpace, xrReferenceSpace);
+    if (gripPose?.transform) {
+      const t = gripPose.transform;
+      vrControllerSphereRight.position.set(t.position.x, t.position.y, t.position.z);
+    }
   }
 
   const triggerPressed = rightInput?.gamepad?.buttons?.[0]?.pressed || rightInput?.gamepad?.buttons?.[1]?.pressed;
@@ -744,15 +750,14 @@ function createGround() {
   groundGridHelper.position.y = 0.01;
   groundGridHelper.material.opacity = 0.3;
   groundGridHelper.material.transparent = true;
-  scene.add(groundGridHelper);
-  
+  (gameContentGroup || scene).add(groundGridHelper);
+
   // Add outline edges to ground
   const groundEdgesGeometry = new THREE.EdgesGeometry(groundGeometry);
   const groundEdgesMaterial = new THREE.LineBasicMaterial({ color: 0x000000, linewidth: 3 });
   const groundEdges = new THREE.LineSegments(groundEdgesGeometry, groundEdgesMaterial);
   ground.add(groundEdges);
-  
-  scene.add(ground);
+  (gameContentGroup || scene).add(ground);
 
   const groundShape = new AmmoLib.btBoxShape(new AmmoLib.btVector3(50, 0.5, 50));
   const groundTransform = new AmmoLib.btTransform();
@@ -815,8 +820,7 @@ function createWalls() {
     const edgesMaterial = new THREE.LineBasicMaterial({ color: 0x000000, linewidth: 2 });
     const edges = new THREE.LineSegments(edgesGeometry, edgesMaterial);
     wall.add(edges);
-    
-    scene.add(wall);
+    (gameContentGroup || scene).add(wall);
 
     const wallShape = new AmmoLib.btBoxShape(new AmmoLib.btVector3(50, 5, 0.5));
     const wallTransform = new AmmoLib.btTransform();
@@ -1058,11 +1062,11 @@ function onTargetHit(targetEntity, projectileEntity, normalizedDistance, targetD
 
   if (targetComp.isCapsule) {
     if (capsuleCount <= game.maxCapsules) {
-      createCapsuleTargetEntity(world, scene, camera);
+      createCapsuleTargetEntity(world, gameContentGroup || scene, camera);
     }
   } else {
     if (targetCount <= game.maxTargets) {
-      createTargetEntity(world, scene, physicsWorld, AmmoLib, camera);
+      createTargetEntity(world, gameContentGroup || scene, physicsWorld, AmmoLib, camera);
     }
   }
 }
@@ -1138,7 +1142,7 @@ function showScorePopup(position, earnedScore, normalizedDistance, targetDistanc
   const scaleFactor = distanceToCamera * 0.18; // Larger scale for bigger text
   sprite.scale.set(scaleFactor * 2, scaleFactor, 1);
   
-  scene.add(sprite);
+  (gameContentGroup || scene).add(sprite);
   
   const startTime = Date.now();
   const startY = sprite.position.y;
@@ -1162,8 +1166,8 @@ function showScorePopup(position, earnedScore, normalizedDistance, targetDistanc
       sprite.scale.set(currentScale * 2, currentScale, 1);
       
       requestAnimationFrame(animatePopup);
-    } else {
-      scene.remove(sprite);
+    } else if (sprite.parent) {
+      sprite.parent.remove(sprite);
     }
   };
   
@@ -1199,7 +1203,7 @@ function createExplosion(position) {
     );
     particle.userData.lifetime = 1.0;
     
-    scene.add(particle);
+    (gameContentGroup || scene).add(particle);
     particles.push(particle);
   }
   
@@ -1216,7 +1220,7 @@ function createExplosion(position) {
     if (elapsed < 1.0) {
       requestAnimationFrame(animateExplosion);
     } else {
-      particles.forEach(particle => scene.remove(particle));
+      particles.forEach(particle => { if (particle.parent) particle.parent.remove(particle); });
     }
   };
   
@@ -1245,9 +1249,9 @@ function shootProjectile() {
   if (isVRActive) {
     const origin = vrControllerPosition.clone();
     const dir = vrControllerDirection.clone();
-    createProjectileEntity(world, scene, physicsWorld, AmmoLib, camera, origin, dir);
+    createProjectileEntity(world, gameContentGroup || scene, physicsWorld, AmmoLib, camera, origin, dir);
   } else {
-    createProjectileEntity(world, scene, physicsWorld, AmmoLib, camera);
+    createProjectileEntity(world, gameContentGroup || scene, physicsWorld, AmmoLib, camera);
   }
 }
 
@@ -1358,10 +1362,10 @@ function startGame() {
     const numTargets = initialCountFromSettings(game.minTargets, game.maxTargets);
     const numCapsules = initialCountFromSettings(game.minCapsules, game.maxCapsules);
     for (let i = 0; i < numTargets; i++) {
-      createTargetEntity(world, scene, physicsWorld, AmmoLib, camera);
+      createTargetEntity(world, gameContentGroup || scene, physicsWorld, AmmoLib, camera);
     }
     for (let i = 0; i < numCapsules; i++) {
-      createCapsuleTargetEntity(world, scene, camera);
+      createCapsuleTargetEntity(world, gameContentGroup || scene, camera);
     }
   }
   if (isVRActive) {
@@ -1419,10 +1423,10 @@ function restartGame() {
   const numTargets = initialCountFromSettings(game.minTargets, game.maxTargets);
   const numCapsules = initialCountFromSettings(game.minCapsules, game.maxCapsules);
   for (let i = 0; i < numTargets; i++) {
-    createTargetEntity(world, scene, physicsWorld, AmmoLib, camera);
+    createTargetEntity(world, gameContentGroup || scene, physicsWorld, AmmoLib, camera);
   }
   for (let i = 0; i < numCapsules; i++) {
-    createCapsuleTargetEntity(world, scene, camera);
+    createCapsuleTargetEntity(world, gameContentGroup || scene, camera);
   }
   
   const gameState = gameStateEntity.getComponent(GameStateComponent);
@@ -1438,8 +1442,8 @@ function clearAllEntities() {
   const targets = world.getEntitiesWith(TargetComponent);
   targets.forEach(entity => {
     const meshComp = entity.getComponent(MeshComponent);
-    if (meshComp) {
-      scene.remove(meshComp.mesh);
+    if (meshComp?.mesh?.parent) {
+      meshComp.mesh.parent.remove(meshComp.mesh);
     }
     const physicsComp = entity.getComponent(PhysicsComponent);
     if (physicsComp) {
@@ -1447,13 +1451,13 @@ function clearAllEntities() {
     }
     world.removeEntity(entity);
   });
-  
+
   // Remove all projectiles
   const projectiles = world.getEntitiesWith(ProjectileComponent);
   projectiles.forEach(entity => {
     const meshComp = entity.getComponent(MeshComponent);
-    if (meshComp) {
-      scene.remove(meshComp.mesh);
+    if (meshComp?.mesh?.parent) {
+      meshComp.mesh.parent.remove(meshComp.mesh);
     }
     const physicsComp = entity.getComponent(PhysicsComponent);
     if (physicsComp) {
@@ -1479,10 +1483,10 @@ function resetStage() {
   const numTargets = initialCountFromSettings(game.minTargets, game.maxTargets)
   const numCapsules = initialCountFromSettings(game.minCapsules, game.maxCapsules)
   for (let i = 0; i < numTargets; i++) {
-    createTargetEntity(world, scene, physicsWorld, AmmoLib, camera)
+    createTargetEntity(world, gameContentGroup || scene, physicsWorld, AmmoLib, camera)
   }
   for (let i = 0; i < numCapsules; i++) {
-    createCapsuleTargetEntity(world, scene, camera)
+    createCapsuleTargetEntity(world, gameContentGroup || scene, camera)
   }
 }
 

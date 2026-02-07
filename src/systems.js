@@ -165,10 +165,10 @@ export class CollisionSystem extends System {
   }
 
   removeEntity(entity) {
-    // Remove mesh from scene
+    // Remove mesh from its parent (scene or gameContentGroup)
     const meshComp = entity.getComponent(MeshComponent);
-    if (meshComp) {
-      this.scene.remove(meshComp.mesh);
+    if (meshComp?.mesh?.parent) {
+      meshComp.mesh.parent.remove(meshComp.mesh);
     }
 
     // Remove physics body if present (capsules have no physics)
@@ -197,10 +197,10 @@ export class ProjectileCleanupSystem extends System {
       const projectile = entity.getComponent(ProjectileComponent);
       
       if (now - projectile.createdAt > projectile.lifetime) {
-        // Remove old projectile
+        // Remove old projectile from its parent (scene or gameContentGroup)
         const meshComp = entity.getComponent(MeshComponent);
-        if (meshComp) {
-          this.scene.remove(meshComp.mesh);
+        if (meshComp?.mesh?.parent) {
+          meshComp.mesh.parent.remove(meshComp.mesh);
         }
 
         const physicsComp = entity.getComponent(PhysicsComponent);
