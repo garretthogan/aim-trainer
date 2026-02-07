@@ -72,6 +72,11 @@ const vrControllerPositionLeft = new THREE.Vector3();
 /** Viewer pose in VR (for game logic only). Three.js XR manager drives the actual camera. */
 const vrViewerPosition = new THREE.Vector3();
 const vrViewerQuaternion = new THREE.Quaternion();
+const vrInvViewerQuat = new THREE.Quaternion();
+const vrControllerWorldPos = new THREE.Vector3();
+/** Set on first VR frame so floor is placed at viewer Y - desktop eye height (works sitting or standing). */
+let vrFloorOffsetSet = false;
+const DESKTOP_EYE_HEIGHT = 5;
 let vrReticle = null;
 let vrTriggerPressedLastFrame = false;
 /** Simple spheres drawn at controller positions in world space (no room-scale / model loading). */
@@ -562,23 +567,23 @@ function onVRSessionStart() {
     if (obj.type === 'LineSegments' || obj.type === 'Line' || (obj.isLineSegments)) obj.visible = false;
   });
   createVRReticle();
-  // Offset play area so floor is same height below head as non-VR (camera at Y=5, floor at 0)
-  const desktopEyeHeight = 5;
-  if (gameContentGroup) gameContentGroup.position.y = -desktopEyeHeight;
+  vrFloorOffsetSet = false;
+  if (gameContentGroup) gameContentGroup.position.y = -DESKTOP_EYE_HEIGHT;
+  // updateVRFromFrame overrides with (viewer Y - 5) on first viewer pose so height matches desktop for sitting/standing
   // Simple spheres at controller positions – use grip space, larger size so they’re visible
   const sphereGeo = new THREE.SphereGeometry(0.05, 16, 16);
   const matLeft = new THREE.MeshBasicMaterial({ color: 0x2288ff, depthTest: false, depthWrite: false });
   const matRight = new THREE.MeshBasicMaterial({ color: 0xff4422, depthTest: false, depthWrite: false });
   vrControllerSphereLeft = new THREE.Mesh(sphereGeo, matLeft);
   vrControllerSphereRight = new THREE.Mesh(sphereGeo, matRight);
-  vrControllerSphereLeft.position.set(-0.3, 0, -0.5);
-  vrControllerSphereRight.position.set(0.3, 0, -0.5);
+  vrControllerSphereLeft.position.set(-0.2, 0, -0.4);
+  vrControllerSphereRight.position.set(0.2, 0, -0.4);
   vrControllerSphereLeft.renderOrder = 999;
   vrControllerSphereRight.renderOrder = 999;
   vrControllerSphereLeft.frustumCulled = false;
   vrControllerSphereRight.frustumCulled = false;
-  scene.add(vrControllerSphereLeft);
-  scene.add(vrControllerSphereRight);
+  camera.add(vrControllerSphereLeft);
+  camera.add(vrControllerSphereRight);
   const crosshairEl = document.getElementById('crosshair');
   if (crosshairEl) crosshairEl.style.visibility = 'hidden';
   document.getElementById('instructions').classList.add('hidden');
@@ -614,12 +619,13 @@ function onVRSessionEnd() {
   vrSession = null;
   xrReferenceSpace = null;
   isVRActive = false;
+  vrFloorOffsetSet = false;
   vrTriggerPressedLastFrame = false;
   if (vrReticle && scene) scene.remove(vrReticle);
   vrReticle = null;
   if (gameContentGroup) gameContentGroup.position.y = 0;
-  if (vrControllerSphereLeft && scene) scene.remove(vrControllerSphereLeft);
-  if (vrControllerSphereRight && scene) scene.remove(vrControllerSphereRight);
+  if (vrControllerSphereLeft && camera) camera.remove(vrControllerSphereLeft);
+  if (vrControllerSphereRight && camera) camera.remove(vrControllerSphereRight);
   vrControllerSphereLeft = null;
   vrControllerSphereRight = null;
   if (groundGridHelper) groundGridHelper.visible = true;
@@ -667,12 +673,15 @@ function updateVRFromFrame(xrFrame) {
   const viewerPose = xrFrame.getViewerPose(xrReferenceSpace);
   if (viewerPose && viewerPose.transform) {
     const t = viewerPose.transform;
-    const y = Math.max(t.position.y, 0.5);
-    vrViewerPosition.set(t.position.x, y, t.position.z);
+    vrViewerPosition.set(t.position.x, t.position.y, t.position.z);
     vrViewerQuaternion.set(t.orientation.x, t.orientation.y, t.orientation.z, t.orientation.w);
+    if (!vrFloorOffsetSet && gameContentGroup) {
+      gameContentGroup.position.y = t.position.y - DESKTOP_EYE_HEIGHT;
+      vrFloorOffsetSet = true;
+    }
   }
 
-  // Left controller sphere: use gripSpace, fallback to targetRaySpace
+  vrInvViewerQuat.copy(vrViewerQuaternion).invert();
   const leftInput = vrSession?.inputSources?.find((s) => s.handedness === 'left');
   if (leftInput && vrControllerSphereLeft) {
     const space = leftInput.gripSpace || leftInput.targetRaySpace;
@@ -680,7 +689,7 @@ function updateVRFromFrame(xrFrame) {
       const pose = xrFrame.getPose(space, xrReferenceSpace);
       if (pose?.transform) {
         const t = pose.transform;
-        vrControllerSphereLeft.position.set(t.position.x, t.position.y, t.position.z);
+        vrControllerSphereLeft.position.copy(vrControllerWorldPos.set(t.position.x, t.position.y, t.position.z)).sub(vrViewerPosition).applyQuaternion(vrInvViewerQuat);
       }
     }
   }
@@ -708,7 +717,7 @@ function updateVRFromFrame(xrFrame) {
       const pose = xrFrame.getPose(space, xrReferenceSpace);
       if (pose?.transform) {
         const t = pose.transform;
-        vrControllerSphereRight.position.set(t.position.x, t.position.y, t.position.z);
+        vrControllerSphereRight.position.copy(vrControllerWorldPos.set(t.position.x, t.position.y, t.position.z)).sub(vrViewerPosition).applyQuaternion(vrInvViewerQuat);
       }
     }
   }
