@@ -1,6 +1,7 @@
 import './style.css'
 import * as THREE from 'three'
 import { VRButton } from 'three/addons/webxr/VRButton.js'
+import { XRControllerModelFactory } from 'three/addons/webxr/XRControllerModelFactory.js'
 import { getCapsuleConfig, setCapsuleConfig, DEFAULTS } from './capsuleConfig.js'
 import { getGameSettings, setGameSettings, DEFAULTS as GameDefaults } from './gameSettings.js'
 import { World } from './ecs.js'
@@ -71,6 +72,11 @@ const vrViewerPosition = new THREE.Vector3();
 const vrViewerQuaternion = new THREE.Quaternion();
 let vrReticle = null;
 let vrTriggerPressedLastFrame = false;
+/** Controller and grip groups for visible motion controllers in VR (removed on session end). */
+let vrControllerLeft = null;
+let vrControllerRight = null;
+let vrControllerGripLeft = null;
+let vrControllerGripRight = null;
 /** Set after first animate() run. Enter VR is deferred until true so Quest gets a "warm" context and can replace its loading UI. */
 let hasRenderedOnce = false;
 
@@ -551,6 +557,18 @@ function onVRSessionStart() {
     if (obj.type === 'LineSegments' || obj.type === 'Line' || (obj.isLineSegments)) obj.visible = false;
   });
   createVRReticle();
+  // Visible motion controllers (index 0 = left, 1 = right)
+  const controllerModelFactory = new XRControllerModelFactory();
+  vrControllerLeft = renderer.xr.getController(0);
+  vrControllerRight = renderer.xr.getController(1);
+  vrControllerGripLeft = renderer.xr.getControllerGrip(0);
+  vrControllerGripRight = renderer.xr.getControllerGrip(1);
+  vrControllerGripLeft.add(controllerModelFactory.createControllerModel(vrControllerGripLeft));
+  vrControllerGripRight.add(controllerModelFactory.createControllerModel(vrControllerGripRight));
+  scene.add(vrControllerLeft);
+  scene.add(vrControllerRight);
+  scene.add(vrControllerGripLeft);
+  scene.add(vrControllerGripRight);
   const crosshairEl = document.getElementById('crosshair');
   if (crosshairEl) crosshairEl.style.visibility = 'hidden';
   document.getElementById('instructions').classList.add('hidden');
@@ -589,6 +607,14 @@ function onVRSessionEnd() {
   vrTriggerPressedLastFrame = false;
   if (vrReticle && scene) scene.remove(vrReticle);
   vrReticle = null;
+  if (vrControllerLeft && scene) scene.remove(vrControllerLeft);
+  if (vrControllerRight && scene) scene.remove(vrControllerRight);
+  if (vrControllerGripLeft && scene) scene.remove(vrControllerGripLeft);
+  if (vrControllerGripRight && scene) scene.remove(vrControllerGripRight);
+  vrControllerLeft = null;
+  vrControllerRight = null;
+  vrControllerGripLeft = null;
+  vrControllerGripRight = null;
   if (groundGridHelper) groundGridHelper.visible = true;
   scene.traverse((obj) => {
     if (obj.type === 'LineSegments' || obj.type === 'Line' || (obj.isLineSegments)) obj.visible = true;
@@ -1298,7 +1324,7 @@ function startGame() {
   gameStarted = true;
   gamePaused = false;
   document.getElementById('instructions').classList.add('hidden');
-  
+
   const game = getGameSettings();
   const timer = gameTimerEntity.getComponent(GameTimerComponent);
   timer.duration = game.timerDuration;
@@ -1313,18 +1339,24 @@ function startGame() {
 
   ensureImpactSoundReady().then(() => resumeAudioContext());
 
-  // Clear any existing targets/capsules so we spawn exactly the configured count (e.g. after "Play Again" -> "Click to start")
-  clearAllEntities();
+  // In VR, defer spawn to next frame so camera has been updated by XR and targets spawn around the player
+  function doSpawn() {
+    clearAllEntities();
+    const numTargets = initialCountFromSettings(game.minTargets, game.maxTargets);
+    const numCapsules = initialCountFromSettings(game.minCapsules, game.maxCapsules);
+    for (let i = 0; i < numTargets; i++) {
+      createTargetEntity(world, scene, physicsWorld, AmmoLib, camera);
+    }
+    for (let i = 0; i < numCapsules; i++) {
+      createCapsuleTargetEntity(world, scene, camera);
+    }
+  }
+  if (isVRActive) {
+    requestAnimationFrame(doSpawn);
+  } else {
+    doSpawn();
+  }
 
-  const numTargets = initialCountFromSettings(game.minTargets, game.maxTargets);
-  const numCapsules = initialCountFromSettings(game.minCapsules, game.maxCapsules);
-  for (let i = 0; i < numTargets; i++) {
-    createTargetEntity(world, scene, physicsWorld, AmmoLib, camera);
-  }
-  for (let i = 0; i < numCapsules; i++) {
-    createCapsuleTargetEntity(world, scene, camera);
-  }
-  
   if (!isVRActive) renderer.domElement.requestPointerLock();
 }
 
