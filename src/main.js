@@ -1,3 +1,4 @@
+import '../../design-system/design-system.css'
 import './style.css'
 import * as THREE from 'three'
 import { VRButton } from 'three/addons/webxr/VRButton.js'
@@ -49,6 +50,12 @@ let controls = {
   euler: new THREE.Euler(0, 0, 0, 'YXZ'),
   PI_2: Math.PI / 2
 };
+/** When true, camera look is driven by device orientation (gyroscope) instead of pointer lock. */
+let isDeviceOrientationActive = false;
+/** Device orientation permission granted and listener active. */
+let deviceOrientationGranted = false;
+/** Initial alpha/beta when starting device orientation (used as "forward" reference). */
+let deviceOrientationInitial = { alpha: 0, beta: 90, gamma: 0 };
 
 // Game stats
 let score = 0;
@@ -321,8 +328,38 @@ function initGameContent() {
   // Setup controls
   setupControls();
 
-  // Start game on click
-  document.getElementById('instructions').addEventListener('click', startGame);
+  // On mobile with device orientation support, show gyro instructions
+  if (isMobileDevice() && typeof DeviceOrientationEvent !== 'undefined') {
+    const instructionsEl = document.getElementById('instructions');
+    if (instructionsEl) {
+      const lookPara = instructionsEl.querySelector('p');
+      if (lookPara) lookPara.textContent = 'Tap to shoot • Move your phone to look around';
+    }
+  }
+
+  // Start game on click – on mobile, request device orientation permission first (required on iOS)
+  document.getElementById('instructions').addEventListener('click', async () => {
+    if (isMobileDevice() && typeof DeviceOrientationEvent !== 'undefined' && !deviceOrientationGranted) {
+      if (typeof DeviceOrientationEvent.requestPermission === 'function') {
+        try {
+          const result = await DeviceOrientationEvent.requestPermission();
+          if (result === 'granted') {
+            startDeviceOrientationLook();
+            deviceOrientationGranted = true;
+            isDeviceOrientationActive = true;
+          }
+        } catch (e) {
+          console.warn('Device orientation permission denied:', e);
+        }
+      } else {
+        // Android / non‑iOS: no permission needed
+        startDeviceOrientationLook();
+        deviceOrientationGranted = true;
+        isDeviceOrientationActive = true;
+      }
+    }
+    startGame();
+  });
 
   // Restart game on button click
   document.getElementById('restart-button').addEventListener('click', restartGame);
@@ -1237,7 +1274,7 @@ const swingSoundUrl = soundBase + 'sounds/swing.wav';
 
 function shootProjectile() {
   if (!gameStarted) return;
-  if (document.pointerLockElement !== renderer.domElement && !isVRActive) return;
+  if (document.pointerLockElement !== renderer.domElement && !isVRActive && !isDeviceOrientationActive) return;
   
   const { muted, volume } = getSoundState();
   if (muted) { /* skip swing when muted */ } else {
@@ -1261,9 +1298,41 @@ function shootProjectile() {
   }
 }
 
+/** Returns true if the device appears to be mobile (touch-primary). */
+function isMobileDevice() {
+  return 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+}
+
+/** Starts device orientation listener for gyroscope-based camera look. Call after permission granted (iOS) or directly (Android). */
+function startDeviceOrientationLook() {
+  let initialSet = false;
+  const handler = (event) => {
+    if (!camera || !isDeviceOrientationActive || isVRActive) return;
+    const alpha = event.alpha != null ? event.alpha : 0;
+    const beta = event.beta != null ? event.beta : 90;
+    const gamma = event.gamma != null ? event.gamma : 0;
+    if (!initialSet) {
+      deviceOrientationInitial.alpha = alpha;
+      deviceOrientationInitial.beta = beta;
+      deviceOrientationInitial.gamma = gamma;
+      initialSet = true;
+    }
+    const sensitivity = getGameSettings().lookSensitivity ?? 1;
+    const toRad = Math.PI / 180;
+    const yaw = (alpha - deviceOrientationInitial.alpha) * toRad * sensitivity;
+    const pitch = (beta - deviceOrientationInitial.beta) * toRad * sensitivity;
+    const pitchClamped = Math.max(-controls.PI_2, Math.min(controls.PI_2, pitch));
+    controls.euler.set(yaw, pitchClamped, 0, 'YXZ');
+    camera.quaternion.setFromEuler(controls.euler);
+  };
+  window.addEventListener('deviceorientation', handler, { passive: true });
+  // Store for cleanup if needed (e.g. on VR enter)
+  window.__deviceOrientationHandler = handler;
+}
+
 function setupControls() {
   document.addEventListener('mousemove', (event) => {
-    if (isVRActive) return;
+    if (isVRActive || isDeviceOrientationActive) return;
     if (!gameStarted || document.pointerLockElement !== renderer.domElement) return;
 
     const movementX = event.movementX || 0;
@@ -1283,7 +1352,7 @@ function setupControls() {
     if (event.target.closest('#audio-controls')) return;
     if (event.target.closest('#pause-menu')) return;
     if (gameStarted) {
-      if (isVRActive) {
+      if (isVRActive || isDeviceOrientationActive) {
         shootProjectile();
       } else if (document.pointerLockElement !== renderer.domElement) {
         renderer.domElement.requestPointerLock();
@@ -1380,7 +1449,11 @@ function startGame() {
     doSpawn();
   }
 
-  if (!isVRActive) renderer.domElement.requestPointerLock();
+  if (!isVRActive && !isDeviceOrientationActive) {
+    renderer.domElement.requestPointerLock();
+  } else if (isDeviceOrientationActive) {
+    document.getElementById('game-container').classList.add('playing');
+  }
 }
 
 function onTimeUp() {

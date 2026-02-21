@@ -4,10 +4,10 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="bullseye.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta http-equiv="Permissions-Policy" content="xr-spatial-tracking=(self)" />
+    <meta http-equiv="Permissions-Policy" content="xr-spatial-tracking=(self), accelerometer=(self), gyroscope=(self)" />
     <title>Aim Trainer 3D</title>
   </head>
-  <body>
+  <body class="tui">
     <div id="settings-page" class="hidden">
       <div class="settings-container">
         <h1>Settings</h1>
@@ -40,7 +40,7 @@
             <span id="look-sensitivity-value">100%</span>
           </label>
           <div class="settings-actions">
-            <button type="submit">Save</button>
+            <button type="submit" class="ok">Save</button>
             <button type="button" id="settings-reset">Reset to defaults</button>
             <a href="./" id="settings-back">Back to game</a>
           </div>
@@ -55,7 +55,7 @@
           <span>Volume</span>
           <input type="range" id="sound-volume" min="0" max="100" value="100" title="Volume" />
         </label>
-        <button type="button" id="enter-vr-btn" class="hidden" title="Enter VR">Enter VR</button>
+        <button type="button" id="enter-vr-btn" class="primary hidden" title="Enter VR">Enter VR</button>
         <button type="button" id="fullscreen-btn" title="Full screen" aria-label="Toggle full screen">⛶</button>
       </div>
       <div id="hud">
@@ -77,7 +77,7 @@
         <div id="pause-menu" class="hidden">
           <div class="modal-content">
             <h2>Paused</h2>
-            <p><button type="button" id="pause-resume">Resume</button></p>
+            <p><button type="button" id="pause-resume" class="ok">Resume</button></p>
             <p><a href="./settings" class="settings-link">Settings</a></p>
           </div>
         </div>
@@ -102,7 +102,7 @@
                 <span class="stat-value" id="final-shots">0</span>
               </div>
             </div>
-            <button id="restart-button">Play Again</button>
+            <button type="button" id="restart-button" class="ok">Play Again</button>
           </div>
         </div>
       </div>

@@ -1,14 +1,12 @@
-* {
-  margin: 0;
-  padding: 0;
-  box-sizing: border-box;
-}
+/*
+  Aim Trainer – styles using TUI design system (../design-system).
+  Design system provides: tokens (--tui-*), reset, typography, forms, .modal, .panel, .hidden.
+  This file: game-specific layout and overrides using TUI tokens.
+*/
 
-body {
-  margin: 0;
-  overflow: hidden;
-  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-  background: #87ceeb;
+/* Optional: game-specific token overrides (e.g. keep sky feel behind canvas) */
+body.tui {
+  background: var(--tui-bg);
 }
 
 #game-container {
@@ -17,74 +15,42 @@ body {
   position: relative;
 }
 
+/* Audio / VR controls – TUI panel style */
 #audio-controls {
   position: absolute;
-  top: 20px;
-  right: 20px;
+  top: var(--tui-pad-2);
+  right: var(--tui-pad-2);
   z-index: 1001;
   pointer-events: auto;
   display: flex;
   align-items: center;
-  gap: 12px;
-  background: rgba(0, 0, 0, 0.7);
-  padding: 10px 14px;
-  border-radius: 10px;
-  border: 2px solid rgba(255, 255, 255, 0.2);
+  gap: var(--tui-gap);
+  background: var(--tui-controls-surface-bg);
+  padding: var(--tui-pad-2);
+  border: 2px solid var(--tui-line-strong);
 }
 
-#sound-mute {
-  background: transparent;
-  border: none;
-  font-size: 24px;
-  cursor: pointer;
-  padding: 0 4px;
+#sound-mute,
+#fullscreen-btn {
+  padding: var(--tui-pad-1) var(--tui-pad-2);
+  font-size: 1.25rem;
   line-height: 1;
 }
 
-#sound-mute:hover {
-  opacity: 0.9;
-}
-
 #enter-vr-btn {
-  background: rgba(25, 118, 210, 0.9);
-  border: 1px solid rgba(255, 255, 255, 0.3);
-  color: white;
-  font-size: 14px;
-  font-weight: 600;
-  padding: 6px 12px;
-  border-radius: 6px;
-  cursor: pointer;
   white-space: nowrap;
-}
-
-#enter-vr-btn:hover {
-  background: #1976D2;
 }
 
 #enter-vr-btn.hidden {
   display: none;
 }
 
-#fullscreen-btn {
-  background: transparent;
-  border: none;
-  font-size: 22px;
-  cursor: pointer;
-  padding: 0 6px;
-  line-height: 1;
-  color: white;
-}
-
-#fullscreen-btn:hover {
-  opacity: 0.9;
-}
-
 .volume-label {
   display: flex;
   align-items: center;
-  gap: 8px;
-  color: white;
-  font-size: 14px;
+  gap: var(--tui-gap);
+  color: var(--tui-fg);
+  font-size: var(--tui-font-size);
 }
 
 .volume-label span {
@@ -93,12 +59,13 @@ body {
 
 #sound-volume {
   width: 80px;
-  accent-color: #4CAF50;
+  accent-color: var(--tui-ok);
 }
 
+/* Hide cursor when playing; keep pointer on controls */
 #game-container.playing,
 #game-container.playing * {
-  cursor: none !important; /* Hide cursor only when pointer is locked */
+  cursor: none !important;
 }
 
 #game-container.playing #audio-controls,
@@ -136,7 +103,7 @@ canvas {
 #crosshair::after {
   content: '';
   position: absolute;
-  background: rgba(255, 255, 255, 0.8);
+  background: var(--tui-line-strong);
 }
 
 #crosshair::before {
@@ -157,23 +124,22 @@ canvas {
 
 #stats {
   position: absolute;
-  top: 20px;
-  left: 20px;
-  background: rgba(0, 0, 0, 0.7);
-  padding: 15px 25px;
-  border-radius: 10px;
-  color: white;
-  font-size: 18px;
+  top: var(--tui-pad-2);
+  left: var(--tui-pad-2);
+  background: var(--tui-controls-surface-bg);
+  padding: var(--tui-pad-2) var(--tui-pad-3);
+  border: 2px solid var(--tui-line-strong);
+  color: var(--tui-fg);
+  font-size: var(--tui-font-size-lg);
   font-weight: bold;
-  border: 2px solid rgba(255, 255, 255, 0.2);
 }
 
 #stats div {
-  margin: 5px 0;
+  margin: var(--tui-pad-1) 0;
 }
 
 #stats span {
-  color: #4CAF50;
+  color: var(--tui-ok);
 }
 
 #instructions {
@@ -181,26 +147,24 @@ canvas {
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
-  background: rgba(0, 0, 0, 0.8);
-  padding: 30px 50px;
-  border-radius: 15px;
-  color: white;
+  background: var(--tui-controls-surface-bg);
+  padding: var(--tui-pad-3) var(--tui-pad-3);
+  border: 2px solid var(--tui-line-strong);
+  color: var(--tui-fg);
   text-align: center;
-  font-size: 18px;
-  border: 3px solid rgba(255, 255, 255, 0.3);
+  font-size: var(--tui-font-size-lg);
   pointer-events: auto;
   cursor: pointer;
-  transition: all 0.3s ease;
+  transition: border-color 0.2s ease, transform 0.2s ease;
 }
 
 #instructions:hover {
-  background: rgba(0, 0, 0, 0.9);
-  border-color: rgba(76, 175, 80, 0.6);
-  transform: translate(-50%, -50%) scale(1.05);
+  border-color: var(--tui-cyan);
+  transform: translate(-50%, -50%) scale(1.02);
 }
 
 #instructions p {
-  margin: 10px 0;
+  margin: var(--tui-gap) 0;
 }
 
 #instructions.hidden {
@@ -208,9 +172,9 @@ canvas {
 }
 
 .vr-hint {
-  font-size: 12px;
-  color: rgba(255, 255, 255, 0.9);
-  margin: 8px 0;
+  font-size: var(--tui-font-size-sm);
+  color: var(--tui-muted);
+  margin: var(--tui-gap) 0;
   max-width: 320px;
 }
 
@@ -219,30 +183,24 @@ canvas {
 }
 
 #timer {
-  color: #4CAF50;
-  font-size: 24px;
+  color: var(--tui-ok);
+  font-size: 1.25rem;
 }
 
 #timer.warning {
-  color: #ff4444;
+  color: var(--tui-danger);
   animation: pulse 0.5s infinite;
 }
 
 @keyframes pulse {
-  0%, 100% {
-    transform: scale(1);
-  }
-  50% {
-    transform: scale(1.1);
-  }
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.1); }
 }
 
+/* Pause overlay – use TUI modal structure */
 #pause-menu {
   position: absolute;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
+  inset: 0;
   background: rgba(0, 0, 0, 0.9);
   display: flex;
   justify-content: center;
@@ -256,29 +214,18 @@ canvas {
 }
 
 #pause-menu .modal-content p {
-  margin: 15px 0;
+  margin: var(--tui-gap) 0;
 }
 
 #pause-menu #pause-resume {
-  padding: 12px 28px;
-  font-size: 18px;
-  cursor: pointer;
-  background: #4CAF50;
-  color: white;
-  border: none;
-  border-radius: 8px;
+  padding: var(--tui-button-padding-y) var(--tui-button-padding-x);
+  font-size: var(--tui-font-size-lg);
 }
 
-#pause-menu #pause-resume:hover {
-  background: #45a049;
-}
-
+/* Game over overlay – TUI modal */
 #gameover-modal {
   position: absolute;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
+  inset: 0;
   background: rgba(0, 0, 0, 0.9);
   display: flex;
   justify-content: center;
@@ -290,104 +237,87 @@ canvas {
   display: none;
 }
 
-.modal-content {
-  background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
-  padding: 40px 60px;
-  border-radius: 20px;
-  text-align: center;
-  border: 3px solid rgba(76, 175, 80, 0.5);
-  box-shadow: 0 0 40px rgba(76, 175, 80, 0.3);
-  max-width: 500px;
+body.tui .modal-content {
+  background: var(--tui-bg);
+  padding: var(--tui-pad-3);
+  border: 2px solid var(--tui-line-strong);
+  max-width: var(--tui-modal-width);
   width: 90%;
 }
 
+body.tui #gameover-modal .modal-content,
+body.tui #pause-menu .modal-content {
+  border-color: var(--tui-ok);
+}
+
 .modal-content h2 {
-  color: #4CAF50;
-  font-size: 48px;
-  margin: 0 0 30px 0;
-  text-shadow: 0 0 20px rgba(76, 175, 80, 0.5);
+  color: var(--tui-ok);
+  font-size: 1.5rem;
+  margin: 0 0 var(--tui-gap-lg);
 }
 
 .final-stats {
-  margin: 30px 0;
+  margin: var(--tui-gap-lg) 0;
 }
 
 .stat-item {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin: 15px 0;
-  padding: 15px 20px;
-  background: rgba(255, 255, 255, 0.05);
-  border-radius: 10px;
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  margin: var(--tui-gap) 0;
+  padding: var(--tui-pad-2);
+  background: rgba(255, 255, 255, 0.04);
+  border: var(--tui-bw) solid var(--tui-line);
 }
 
 .stat-label {
-  color: #aaa;
-  font-size: 18px;
+  color: var(--tui-muted);
+  font-size: var(--tui-font-size-lg);
   font-weight: normal;
 }
 
 .stat-value {
-  color: #4CAF50;
-  font-size: 28px;
+  color: var(--tui-ok);
+  font-size: 1.25rem;
   font-weight: bold;
 }
 
 #restart-button {
-  background: linear-gradient(135deg, #4CAF50 0%, #45a049 100%);
-  color: white;
-  border: none;
-  padding: 15px 40px;
-  font-size: 20px;
-  font-weight: bold;
-  border-radius: 10px;
-  cursor: pointer;
-  margin-top: 20px;
-  transition: all 0.3s ease;
-  box-shadow: 0 4px 15px rgba(76, 175, 80, 0.4);
+  margin-top: var(--tui-gap-lg);
 }
 
 #restart-button:hover {
-  transform: scale(1.05);
-  box-shadow: 0 6px 20px rgba(76, 175, 80, 0.6);
-  background: linear-gradient(135deg, #45a049 0%, #4CAF50 100%);
+  transform: scale(1.02);
 }
 
-.hidden {
-  display: none !important;
-}
-
-/* Settings page */
+/* Settings page – TUI tokens */
 #settings-page {
   min-height: 100vh;
   display: flex;
   align-items: center;
   justify-content: center;
-  background: #87ceeb;
-  padding: 20px;
+  background: var(--tui-bg);
+  padding: var(--tui-pad-2);
 }
 
 .settings-container {
-  background: rgba(255, 255, 255, 0.95);
-  padding: 2rem 2.5rem;
-  border-radius: 12px;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.15);
+  background: var(--tui-bg);
+  padding: var(--tui-pad-3);
+  border: 2px solid var(--tui-line-strong);
   max-width: 420px;
   width: 100%;
 }
 
 .settings-container h1 {
-  margin-bottom: 1.5rem;
-  color: #333;
-  font-size: 1.75rem;
+  margin-bottom: var(--tui-gap-lg);
+  color: var(--tui-fg);
+  font-size: 1.5rem;
 }
 
 .settings-section-title {
-  margin: 1.25rem 0 0.5rem;
-  color: #555;
-  font-size: 1.1rem;
+  margin: var(--tui-gap-lg) 0 var(--tui-pad-1);
+  color: var(--tui-muted);
+  font-size: var(--tui-font-size-lg);
   font-weight: 600;
 }
 
@@ -398,60 +328,41 @@ canvas {
 #capsule-settings-form label {
   display: flex;
   flex-direction: column;
-  gap: 0.35rem;
-  margin-bottom: 1.25rem;
-  color: #444;
+  gap: var(--tui-gap-sm);
+  margin-bottom: var(--tui-gap);
+  color: var(--tui-muted);
   font-weight: 500;
-}
-
-#capsule-settings-form input[type="number"] {
-  padding: 0.5rem 0.75rem;
-  font-size: 1rem;
-  border: 1px solid #ccc;
-  border-radius: 8px;
 }
 
 .settings-actions {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.75rem;
+  gap: var(--tui-gap);
   align-items: center;
-  margin-top: 1.5rem;
+  margin-top: var(--tui-gap-lg);
 }
 
-.settings-actions button {
-  padding: 0.6rem 1.2rem;
-  font-size: 1rem;
-  border: none;
-  border-radius: 8px;
-  cursor: pointer;
-  background: #4CAF50;
-  color: white;
-  font-weight: 600;
+.settings-actions button[type="submit"] {
+  border-color: var(--tui-ok);
 }
 
 .settings-actions button[type="button"] {
-  background: #666;
-}
-
-.settings-actions button:hover {
-  opacity: 0.9;
+  border-color: var(--tui-line-strong);
 }
 
 .settings-actions a {
-  color: #2196F3;
+  color: var(--tui-cyan);
   text-decoration: none;
-  font-weight: 500;
 }
 
 .settings-actions a:hover {
-  text-decoration: underline;
+  color: var(--tui-pink);
 }
 
 .settings-message {
-  margin-top: 1rem;
-  color: #2e7d32;
-  font-size: 0.95rem;
+  margin-top: var(--tui-gap);
+  color: var(--tui-ok);
+  font-size: var(--tui-font-size);
 }
 
 .settings-message.hidden {
@@ -459,11 +370,11 @@ canvas {
 }
 
 .settings-link {
-  color: rgba(255, 255, 255, 0.9);
+  color: var(--tui-cyan);
   text-decoration: underline;
   pointer-events: auto;
 }
 
 .settings-link:hover {
-  color: white;
+  color: var(--tui-pink);
 }
